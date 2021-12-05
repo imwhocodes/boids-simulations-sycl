@@ -14,6 +14,10 @@ int main(int argc, char *argv[]){
 
     srand(0);
 
+
+    std::cout << "Size of boid:\t" << sizeof(Boid) << std::endl;
+
+    std::exit(0);
    
 
     // Check inputs.

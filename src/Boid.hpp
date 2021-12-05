@@ -27,8 +27,7 @@ public std::enable_shared_from_this<Boid>{
 
         using Coord_t = Eigen::Vector2f;
         using CoordList_t = Eigen::Matrix2Xf;
-        using DistanceList_t = Eigen::VectorXf;
-        using MaskList_t = Eigen::Array<bool, 1, Eigen::Dynamic>;
+        using DistanceList_t = Eigen::Matrix2Xf;
 
         using Ptr_t = std::shared_ptr<Boid>;
         using List_t = std::vector<Boid>;
@@ -50,7 +49,7 @@ public std::enable_shared_from_this<Boid>{
         static constexpr float_t BBOX_WEIGHT =        1;
 
 
-        static constexpr float_t MAX_SPEED = 0.015;
+        static constexpr float_t MAX_SPEED = 0.025;
         static constexpr float_t ACCELERATION = 0.003;
 
 
@@ -117,9 +116,9 @@ public std::enable_shared_from_this<Boid>{
         }
 
 
-        float_t distance(const Boid & other) const {
-            return (this->position - other.position).norm();
-        }
+        // float_t distance(const Boid & other) const {
+        //     return (this->position - other.position).norm();
+        // }
 
         void drawSelf() const {
             glColor3f(1.0, 1.0, 1.0);
@@ -259,12 +258,6 @@ public std::enable_shared_from_this<Boid>{
 
         }
 
-        // static Boid::Coord_t GenerateAvgWithMask(const Boid::CoordList_t & values, const Boid::MaskList_t & mask){
-
-        //     return values(Eigen::all, mask).rowwise().sum() / mask.count();
-
-        // }
-
         static Boid::Coord_t IfNaNGetZero( const Boid::Coord_t & v ){
             if(v.array().isNaN().any()){
                 return Boid::Coord_t::Zero();
@@ -275,31 +268,44 @@ public std::enable_shared_from_this<Boid>{
         }
 
 
-        static Boid::DistanceList_t GenerateDistanceList(const Boid::CoordList_t & input, const Eigen::Index idx ){
+        static Boid::DistanceList_t GenerateDistanceList(const Boid::CoordList_t & positions, const Boid::CoordList_t & directions, const Eigen::Index idx ){
 
-            Boid::DistanceList_t dist = (input.colwise() - input.col(idx)).colwise().norm();
+            Boid::DistanceList_t res;
 
-            dist(idx) = INFINITY;
+            assert(positions.cols() == directions.cols());
 
-            assert(dist.rows() == input.cols());
+            res.resize(Eigen::NoChange, positions.cols());
+
+            const auto pi = positions.col(idx);
+            const auto vi = directions.col(idx);
+
+
+            const auto dist_vect = positions.colwise() - pi;
+            const auto dist_norm = dist_vect.colwise().norm();
+
+
+            const auto angles = ( dist_vect.array() * vi.normalized().replicate(1, directions.cols()).array() ).colwise().sum().abs() / dist_norm.array();
+
+
+            assert(dist_norm.rows() == 1);
+
+
+            res.row(0) = dist_norm;
+            res.row(1) = angles;
+
+            // std::cout << res.row(1) << std::endl;
+
+            res.col(idx).array() = INFINITY;
+
             
-            return dist;
+            return res;
 
         }
 
 
-        static auto ComputeMaskByDistance(const Boid::DistanceList_t & distances, const float_t max_distance){
-            return (distances.array() <= max_distance).transpose();
-        }
-
-        static auto ComputeMaskByDistanceAndAngle(const Boid::DistanceList_t & distances, const float_t max_distance, const float_t max_radius){
-            return (distances.array() <= max_distance).transpose();
-        }
-
-
-        static Boid::Coord_t ComputeAvgInRadius(const Boid::DistanceList_t & distances, const Boid::CoordList_t & values, const float_t max_distance){
+        static Boid::Coord_t ComputeAvgInRadiusAngle(const Boid::DistanceList_t & distances, const Boid::CoordList_t & values, const float_t max_distance, const float_t max_angle){
             
-            const auto mask = (distances.array() <= max_distance).transpose();
+            const auto mask = (distances.row(0).array() <= max_distance) && (distances.row(1).array() <= max_angle);
 
             const auto mask_sized = mask.replicate< Boid::Coord_t::RowsAtCompileTime, 1 >();
 
@@ -317,31 +323,35 @@ public std::enable_shared_from_this<Boid>{
             const Boid::CoordList_t pos_list = Boid::GeneratePositionList(input);
             const Boid::CoordList_t vel_list = Boid::GenerateVelocityList(input);
 
-            #pragma omp parallel for schedule(static) num_threads(16)
+            assert(!pos_list.array().isNaN().any());
+            assert(!vel_list.array().isNaN().any());
+
+
+            #pragma omp parallel for schedule(static)
             for(size_t i = 0; i < input.size(); i++ ){
 
                 const Boid & b = *(input[i]);
 
-                const Boid::DistanceList_t dist_list = Boid::GenerateDistanceList(pos_list, i);
+                const Boid::DistanceList_t dist_list = Boid::GenerateDistanceList(pos_list, vel_list, i);
 
 
                 const Boid::Coord_t force_of_bbox             = b.getForceFromBBox();
 
 
 
-                const Boid::Coord_t center_of_group_perception =   Boid::ComputeAvgInRadius(dist_list, pos_list, Boid::PERCEPTION_RADIUS);
+                const Boid::Coord_t center_of_group_perception =   Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, Boid::PERCEPTION_RADIUS, 0.50);
                 const Boid::Coord_t force_of_group_perception =     (center_of_group_perception - b.position) / Boid::PERCEPTION_RADIUS;
 
                 
                 
-                const Boid::Coord_t center_of_group_separation = Boid::ComputeAvgInRadius(dist_list, pos_list, Boid::SEPARATION_RADIUS);
+                const Boid::Coord_t center_of_group_separation = Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, Boid::SEPARATION_RADIUS, INFINITY);
                 const Boid::Coord_t aplha_to_group_separation =  (center_of_group_separation - b.position) / Boid::SEPARATION_RADIUS;
-                const Boid::Coord_t force_of_group_separation = - (Coord_t::Ones() - aplha_to_group_separation.cwiseAbs()).array() * aplha_to_group_separation.cwiseSign().array();
+                const Boid::Coord_t force_of_group_separation = - (Coord_t::Ones().normalized() - aplha_to_group_separation.cwiseAbs()).array() * aplha_to_group_separation.cwiseSign().array();
 
 
     
-                const Boid::Coord_t velocity_of_group_alignment =   Boid::ComputeAvgInRadius(dist_list, vel_list, Boid::ALIGNMENT_RADIUS);
-                const Boid::Coord_t force_of_group_velocity  =        (velocity_of_group_alignment - b.velocity) / (Boid::MAX_SPEED * 2);
+                const Boid::Coord_t velocity_of_group_alignment =   Boid::ComputeAvgInRadiusAngle(dist_list, vel_list, Boid::ALIGNMENT_RADIUS, 0.75);
+                const Boid::Coord_t force_of_group_velocity  =      (velocity_of_group_alignment - b.velocity) / (Boid::MAX_SPEED * 2);
 
 
                 res[i] = std::make_shared<Boid>( 
@@ -436,23 +446,26 @@ public std::enable_shared_from_this<Boid>{
 
 
         static void SetPerceptionWeight(const float_t w){
-            assert(r >= 0 && r <= 1);
+            assert(w >= 0 && w <= 1);
             Boid::PERCEPTION_WEIGHT =  w;
         }
 
         static void SetSeparationWeight(const float_t w){
-            assert(r >= 0 && r <= 1);
+            assert(w >= 0 && w <= 1);
             Boid::SEPARATION_WEIGHT = w;
         }
 
         static void SetAlignmentWeight(const float_t w){
-            assert(r >= 0 && r <= 1);
+            assert(w >= 0 && w <= 1);
             Boid::ALIGNMENT_WEIGHT =  w;
         }
 
 
 
 };
+
+// sizeof(Boid);
+// static_assert(sizeof(Boid) == sizeof(float_t) * 6, "Check size");
 
 Boid::Coord_t Boid::HALF_SIMULATION_SIZE = Boid::Coord_t::Constant(0.5);
 
