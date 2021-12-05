@@ -1,1 +1,0 @@
-/usr/bin/clang++ -O3 -DNDEBUG -Ofast -O3 -DNDEBUG -flto=thin -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX11.0.sdk -mmacosx-version-min=10.15 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/qmidiin.dir/tests/qmidiin.cpp.o -o tests/qmidiin  -Wl,-rpath,/Users/lucapassarella/Documents/projects/boid_fluid/build/lib/rtmidi librtmidi.6.0.0.dylib 

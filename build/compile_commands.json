@@ -1,7 +1,0 @@
-[
-{
-  "directory": "/Users/lucapassarella/Documents/projects/boid_fluid/build",
-  "command": "/usr/bin/clang++ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DGL_SILENCE_DEPRECATION -iframework /Library/Developer/CommandLineTools/SDKs/MacOSX11.0.sdk/System/Library/Frameworks -isystem /usr/local/include/eigen3 -isystem /usr/local/include -isystem /Users/lucapassarella/Documents/projects/boid_fluid/lib/rtmidi -O3 -DNDEBUG -Ofast -O3 -DNDEBUG -flto=thin -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX11.0.sdk -mmacosx-version-min=10.15   -Wall -Wextra -ffast-math -Xclang -fopenmp -std=gnu++2a -o CMakeFiles/boids.dir/src/main.cpp.o -c /Users/lucapassarella/Documents/projects/boid_fluid/src/main.cpp",
-  "file": "/Users/lucapassarella/Documents/projects/boid_fluid/src/main.cpp"
-}
-]
