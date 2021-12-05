@@ -92,7 +92,41 @@ int main(int argc, char *argv[]){
                     boids_list = Boid::SetSimulationSize(Boid::Coord_t{16.0 / 9.0, 1} * std::lerp(1.0f, 10.0f, c.getValueNorm()), boids_list);
                     break;
                 }
-                
+
+
+                case 2: {
+                    Boid::SetSeparationRadius(c.getValueNorm());
+                    break;
+                }
+
+                case 6: {
+                    Boid::SetSeparationWeight(c.getValueNorm());
+                    break;
+                }
+
+
+
+                case 3: {
+                    Boid::SetPerceptionRadius(c.getValueNorm());
+                    break;
+                }
+
+                case 7: {
+                    Boid::SetPerceptionWeight(c.getValueNorm());
+                    break;
+                }
+
+
+                case 4: {
+                    Boid::SetAlignmentRadius(c.getValueNorm());
+                    break;
+                }
+
+                case 8: {
+                    Boid::SetAlignmentWeight(c.getValueNorm());
+                    break;
+                }
+
                 default:
                     break;
             }
@@ -100,7 +134,7 @@ int main(int argc, char *argv[]){
 
         const auto computing_start_ticks = Clock_t::now();
 
-        boids_list = Boid::MainComputeNewGeneration_V2(boids_list);
+        boids_list = Boid::MainComputeNewGeneration(boids_list);
 
         const auto computing_end_ticks = Clock_t::now();
 

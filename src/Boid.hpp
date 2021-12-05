@@ -38,15 +38,15 @@ public std::enable_shared_from_this<Boid>{
 
         static constexpr float_t BOID_SIZE  =  0.005;
 
-        static constexpr float_t PERCEPTION_RADIUS =  0.1;
-        static constexpr float_t SEPARATION_RADIUS =  PERCEPTION_RADIUS / 4;
-        static constexpr float_t ALIGNMENT_RADIUS =   PERCEPTION_RADIUS * 3;
+        static float_t PERCEPTION_RADIUS;
+        static float_t SEPARATION_RADIUS;
+        static float_t ALIGNMENT_RADIUS;
         static constexpr float_t BBOX_RADIUS =        0.25;
 
 
-        static constexpr float_t PERCEPTION_WEIGHT =  0.2;
-        static constexpr float_t SEPARATION_WEIGHT =  0.75;
-        static constexpr float_t ALIGNMENT_WEIGHT =   0.3;
+        static float_t PERCEPTION_WEIGHT;
+        static float_t SEPARATION_WEIGHT;
+        static float_t ALIGNMENT_WEIGHT;
         static constexpr float_t BBOX_WEIGHT =        1;
 
 
@@ -130,29 +130,6 @@ public std::enable_shared_from_this<Boid>{
             );
         }
 
-        Boid::PtrList_t getInRadius(const Boid::PtrList_t & input, const float_t radius) const {
-            
-            const auto self = this->shared_from_this();
-            
-            Boid::PtrList_t res;
-            res.reserve(input.size());
-
-            for(const Boid::Ptr_t & b : input){
-                if(this->distance(*b) <= radius && b != self){
-                    res.push_back(b);
-                }
-            }
-
-            return res;
-        }
-
-        Boid::PtrList_t getInPerception(const Boid::PtrList_t & input) const {
-            return this->getInRadius(input, Boid::PERCEPTION_RADIUS);
-        }
-
-        Boid::PtrList_t getInSeparation(const Boid::PtrList_t & input) const {
-            return this->getInRadius(input, Boid::SEPARATION_RADIUS);
-        }
 
         Coord_t getForceFromBBox() const { 
 
@@ -162,36 +139,9 @@ public std::enable_shared_from_this<Boid>{
             //                                             Boid::ALIGNMENT_RADIUS
             //                                     }.maxCoeff();
 
-
             return - ( Coord_t::Ones() - ( ( Boid::HALF_SIMULATION_SIZE - this->position.cwiseAbs() ).cwiseMin( Boid::BBOX_RADIUS ) / Boid::BBOX_RADIUS ) ).cwiseProduct(this->position.cwiseSign());
 
-            // return
-            //         ( 1 - ( ( (-Boid::HALF_SIMULATION_SIZE) - this->position ).cwiseMin( Boid::PERCEPTION_RADIUS ) / Boid::PERCEPTION_RADIUS ).array() )
-
-            //         - ( (   this->position.array() - ( Boid::HALF_SIMULATION_SIZE.array() - Boid::PERCEPTION_RADIUS ) ).cwiseMax(0) / Boid::PERCEPTION_RADIUS )
-
-            //     ;
-
         }
-
-
-
-        // static Boid Random(){
-        //     return { 
-        //                 Coord_t{    
-        //                             randFloat( -Boid::HALF_SIMULATION_SIZE.x(), +Boid::HALF_SIMULATION_SIZE.x() ),
-        //                             randFloat( -Boid::HALF_SIMULATION_SIZE.y(), +Boid::HALF_SIMULATION_SIZE.y() )
-        //                         },
-
-        //                 Boid::ClampVelocity(
-        //                                         Coord_t{    
-        //                                             randFloat(-Boid::MAX_SPEED, Boid::MAX_SPEED ),
-        //                                             randFloat(-Boid::MAX_SPEED, Boid::MAX_SPEED )
-        //                                         }
-        //                 )
-        //     };
-        // }
-
 
 
         static Boid Random(){
@@ -221,27 +171,6 @@ public std::enable_shared_from_this<Boid>{
             
         }
 
-        static Coord_t ComputeGroupAvgPosition(const Boid::PtrList_t & input){
-
-            Coord_t center = Coord_t::Zero();
-
-            for(const Boid::Ptr_t & b : input){
-                center += b->position;
-            }
-
-            return center / input.size();
-        }
-
-        static Coord_t ComputeGroupAvgVelocity(const Boid::PtrList_t & input){
-
-            Coord_t velocity = Coord_t::Zero();
-
-            for(const Boid::Ptr_t & b : input){
-                velocity += b->velocity;
-            }
-
-            return velocity / input.size();
-        }
 
         static Boid::PtrList_t RandomPtrList(const size_t n){
 
@@ -378,21 +307,10 @@ public std::enable_shared_from_this<Boid>{
 
             return  masked.rowwise().sum() / mask.count();
 
-            // // const Boid::CoordList_t t = //mask.select(values, Boid::CoordList_t::Constant(0, distances.size()));//Boid::CoordList_t::Constant(0, distances.size()));
-
-            // const auto zeroes = Boid::DistanceList_t::Constant(values.cols(), 0);
-
-            // return  Boid::Coord_t{
-
-            //                             mask.select(values.row(0), zeroes).sum(),
-            //                             mask.select(values.row(1), zeroes).sum(),
-                                    
-            // } / mask.count();
-
         }
 
 
-        static Boid::PtrList_t MainComputeNewGeneration_V2(const Boid::PtrList_t & input){
+        static Boid::PtrList_t MainComputeNewGeneration(const Boid::PtrList_t & input){
 
             Boid::PtrList_t res(input.size());
 
@@ -457,61 +375,6 @@ public std::enable_shared_from_this<Boid>{
         }
 
 
-
-        static Boid::PtrList_t MainComputeNewGeneration(const Boid::PtrList_t & input){
-
-            Boid::PtrList_t res(input.size());
-
-            // for(const Boid::Ptr_t & b : input){
-            #pragma omp parallel for
-            for(size_t i = 0; i < input.size(); i++ ){
-
-                const Boid::Ptr_t & b = input[i];
-
-                const Coord_t force_of_bbox = b->getForceFromBBox();
-
-                const Boid::PtrList_t in_perception_range = b->getInPerception(input);
-
-                if(in_perception_range.size()){
-
-                    const Coord_t center_of_group_perception =   Boid::ComputeGroupAvgPosition(in_perception_range);
-
-                    const Coord_t force_of_group_perception =    (center_of_group_perception - b->position) / Boid::PERCEPTION_RADIUS;
-
-                    const Coord_t velocity_of_group_perception = Boid::ComputeGroupAvgVelocity(in_perception_range);
-
-                    const Coord_t force_of_group_velocity  =     (velocity_of_group_perception - b->velocity) / Boid::MAX_SPEED;
-
-                    const Boid::PtrList_t in_separation_range = b->getInSeparation(in_perception_range);
-
-                    if(in_separation_range.size()){
-
-                        const Coord_t center_of_group_separation = Boid::ComputeGroupAvgPosition(in_separation_range);
-
-                        const Coord_t aplha_to_group_separation =  (center_of_group_separation - b->position) / Boid::SEPARATION_RADIUS;
-
-                        const Coord_t force_of_group_separation = - (Coord_t::Ones() - aplha_to_group_separation.cwiseAbs()).array() * aplha_to_group_separation.cwiseSign().array();
-
-                        res[i] = std::make_shared<Boid>( b->applyForce( force_of_group_separation + force_of_group_perception + force_of_group_velocity + force_of_bbox) );
-
-                    }
-
-                    else{
-                        res[i] = std::make_shared<Boid>( b->applyForce( force_of_group_perception + force_of_group_velocity + force_of_bbox) );
-                    }
-
-                }
-
-                else{
-                    res[i] = std::make_shared<Boid>( b->applyForce( force_of_bbox ) );
-
-                }
-               
-            }
-
-            return res;
-        }
-
         static void SetSimulationSize(const Coord_t & size){
             Boid::HALF_SIMULATION_SIZE = size / 2;
 
@@ -526,14 +389,6 @@ public std::enable_shared_from_this<Boid>{
             glMatrixMode(GL_MODELVIEW);
         }
 
-
-        // static Coord_t GetSimulationBBoxMin(){
-        //     return -Boid::HALF_SIMULATION_SIZE;
-        // }
-
-        // static Coord_t GetSimulationBBoxMax(){
-        //     return Boid::HALF_SIMULATION_SIZE;
-        // }
 
         static Boid::PtrList_t SetSimulationSize(const Coord_t & size, const Boid::PtrList_t & input){
             
@@ -563,15 +418,48 @@ public std::enable_shared_from_this<Boid>{
             
         }
 
+
+        static void SetPerceptionRadius(const float_t r){
+            assert(r >= 0 && r <= 1);
+            Boid::PERCEPTION_RADIUS =  r;
+        }
+
+        static void SetSeparationRadius(const float_t r){
+            assert(r >= 0 && r <= 1);
+            Boid::SEPARATION_RADIUS = r;
+        }
+
+        static void SetAlignmentRadius(const float_t r){
+            assert(r >= 0 && r <= 1);
+            Boid::ALIGNMENT_RADIUS =  r;
+        }
+
+
+        static void SetPerceptionWeight(const float_t w){
+            assert(r >= 0 && r <= 1);
+            Boid::PERCEPTION_WEIGHT =  w;
+        }
+
+        static void SetSeparationWeight(const float_t w){
+            assert(r >= 0 && r <= 1);
+            Boid::SEPARATION_WEIGHT = w;
+        }
+
+        static void SetAlignmentWeight(const float_t w){
+            assert(r >= 0 && r <= 1);
+            Boid::ALIGNMENT_WEIGHT =  w;
+        }
+
+
+
 };
 
 Boid::Coord_t Boid::HALF_SIMULATION_SIZE = Boid::Coord_t::Constant(0.5);
 
+float_t Boid::PERCEPTION_RADIUS =  0.1;
+float_t Boid::SEPARATION_RADIUS =  Boid::PERCEPTION_RADIUS / 4;
+float_t Boid::ALIGNMENT_RADIUS =   Boid::PERCEPTION_RADIUS * 3;
 
-
-// Eigen::Vector2f compute_stuff(Eigen::Matrix2Xf & values){
-//     const auto mask = values.colwise().norm().array() < 1;
-
-//     return mask.select(values.colwise(), Eigen::Vector2f::Zero()).rowwise().sum();
-    
-// }
+float_t Boid::PERCEPTION_WEIGHT =  0.2;
+float_t Boid::SEPARATION_WEIGHT =  0.75;
+float_t Boid::ALIGNMENT_WEIGHT =   0.3;

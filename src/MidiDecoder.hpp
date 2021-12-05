@@ -76,7 +76,7 @@ class MidiCommand {
 
 
         float_t getValueNorm() const {
-            return this->value / 127;
+            return this->value / float_t(127);
         }
 
         template<typename T>
