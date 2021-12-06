@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include <OpenGL/gl.h>
 #include <iostream>
+#include <Eigen/Dense>
 
 void  printErrorCallback(const int err, const char * desc){
     std::cerr << "Error: " << err << '\t' << desc << std::endl;
@@ -22,6 +23,51 @@ void  printErrorCallback(const int err, const char * desc){
 //            ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
 //             type, severity, message );
 // }
+
+
+using Color_t = Eigen::Vector3f;
+
+Color_t hsv2rgb(const Color_t & hsv ){
+
+    const float_t hh = hsv.x();
+    
+    const long i = hh * 6;
+    const float_t ff = hh - i;
+    const float_t p = hsv.z() * (1.0 - hsv.y());
+    const float_t q = hsv.z() * (1.0 - (hsv.y() * ff));
+    const float_t t = hsv.z() * (1.0 - (hsv.y() * (1.0 - ff)));
+
+    switch(i) {
+        case 0:
+            return {hsv.z(), t, p};
+
+
+        case 1:
+            return {q, hsv.z(), p};
+
+
+        case 2:
+            return {p, hsv.z(), t};
+
+
+        case 3:
+            return {p, q, hsv.z()};
+
+
+        case 4:
+            return {t, p, hsv.z()};
+
+
+        case 5:
+        
+            return {hsv.z(), p, q};
+
+        default:
+            assert(false);
+
+    }
+         
+}
 
 
 
@@ -63,18 +109,24 @@ GLFWwindow * CreateOpenWindow(const unsigned int w, const unsigned int h){
 
 void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat radius){
 
-	int triangleAmount = 20; //# of triangles used to draw circle
+	constexpr size_t triangleAmount = 20; //# of triangles used to draw circle
 	
-	GLfloat twicePi = 2.0f * M_PI;
+	// GLfloat twicePi = 2.0f * M_PI;
 	
 	glBegin(GL_TRIANGLE_FAN);
+
 		glVertex2f(x, y); // center of circle
-		for(int i = 0; i <= triangleAmount; i++) { 
+
+		for(size_t i = 0; i <= triangleAmount; i++) { 
+
+      const GLfloat alpha = i * M_PI * 2 / triangleAmount;
+
 			glVertex2f(
-		                x + (radius * std::cos(i *  twicePi / triangleAmount)), 
-			            y + (radius * std::sin(i * twicePi / triangleAmount))
+		              x + (radius * std::cos(alpha)), 
+			            y + (radius * std::sin(alpha))
 			); 
 		}
+
 	glEnd();
 }
 

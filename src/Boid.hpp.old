@@ -10,7 +10,7 @@ float_t randFloat() {
 }
 
 float_t randFloat(const float_t max) {
-    return randFloat() * max;
+    return (float_t(rand()) / float_t(RAND_MAX)) * max;
 }
 
 float_t randFloat(const float_t min, const float_t max) {
@@ -40,7 +40,7 @@ public std::enable_shared_from_this<Boid>{
         static float_t PERCEPTION_RADIUS;
         static float_t SEPARATION_RADIUS;
         static float_t ALIGNMENT_RADIUS;
-        static constexpr float_t BBOX_RADIUS =        0.1;
+        static constexpr float_t BBOX_RADIUS =        0.25;
 
 
         static float_t PERCEPTION_WEIGHT;
@@ -50,11 +50,11 @@ public std::enable_shared_from_this<Boid>{
 
 
         static constexpr float_t MAX_SPEED = 0.025;
-        static constexpr float_t ACCELERATION = 0.005;
+        static constexpr float_t ACCELERATION = 0.003;
 
 
-        static constexpr size_t ABS_MIN_BOID_QTY = 5;
-        static constexpr size_t ABS_MAX_BOID_QTY = 4000;
+        static constexpr size_t ABS_MIN_BOID_QTY = 10;
+        static constexpr size_t ABS_MAX_BOID_QTY = 5000;
 
 
 
@@ -62,13 +62,6 @@ public std::enable_shared_from_this<Boid>{
 
         const Coord_t position;
         const Coord_t velocity;
-        const Coord_t acceleration;
-
-        const float_t perception_radius;
-        const float_t separarion_radius;
-        const float_t  alignment_radius;
-
-
 
         static void assertPosition(const Coord_t & pos){
             assert(
@@ -86,34 +79,18 @@ public std::enable_shared_from_this<Boid>{
     
     public:
 
-        // Boid(const float_t x, const float_t y)
-        //     :
-        // Boid{Coord_t{x, y}, Coord_t::Zero()}
-        // {}
+        Boid(const float_t x, const float_t y)
+            :
+        Boid{Coord_t{x, y}, Coord_t::Zero()}
+        {}
 
-        Boid(const Coord_t & pos, const Coord_t & vel, const float_t perception_radius, const float_t separarion_radius, const float_t alignment_radius)
+        Boid(const Coord_t & pos, const Coord_t & vel)
             :
         position{pos},
-        velocity{vel},
-        acceleration{Boid::Coord_t::Zero()},
-        perception_radius{perception_radius},
-        separarion_radius{separarion_radius},
-        alignment_radius{alignment_radius}
+        velocity{vel}
         {
             Boid::assertPosition(pos);
             Boid::assertVelocity(vel);
-        }
-
-        Boid(const Boid & boid, const Coord_t & acceleration )
-            :
-        position{ Boid::ClampPosition( boid.position + boid.velocity ) },
-        velocity{ Boid::ClampVelocity( boid.velocity + acceleration ) },
-        acceleration{acceleration},
-        perception_radius{boid.perception_radius},
-        separarion_radius{boid.separarion_radius},
-        alignment_radius{boid.alignment_radius}
-        {
-
         }
 
         const Coord_t & getPosition() const {
@@ -128,7 +105,10 @@ public std::enable_shared_from_this<Boid>{
 
         Boid applyAcceleration(const Coord_t & acceleration) const {
 
-            return Boid{ *this, acceleration };
+            return Boid{ 
+                            Boid::ClampPosition( this->position + velocity ),
+                            Boid::ClampVelocity( this->velocity + acceleration )
+                        };
         }
 
         Boid applyNoForce() const {
@@ -141,22 +121,11 @@ public std::enable_shared_from_this<Boid>{
         // }
 
         void drawSelf() const {
-
-            const float_t wt = 1 ; //Boid::PERCEPTION_WEIGHT + Boid::SEPARATION_WEIGHT + Boid::SEPARATION_WEIGHT;
-
-            const float_t f = std::min(this->acceleration.norm() / ( Boid::ACCELERATION * wt), 1.0f);
-
-            const Color_t hsv{std::lerp(0.5f, 0.0f, f), 1, 1};
-
-            const Color_t rgb = hsv2rgb(hsv);
-
-            // std::cout << "\n\n" << hsv.transpose() << '\n' << rgb.transpose() << std::endl;
-
-            glColor3f(rgb.x(), rgb.y(), rgb.z());
+            glColor3f(1.0, 1.0, 1.0);
             DrawFilledCircle(
                                 this->position.x(),
                                 this->position.y(),
-                                Boid::BOID_SIZE / 2
+                                Boid::BOID_SIZE
             );
         }
 
@@ -177,10 +146,7 @@ public std::enable_shared_from_this<Boid>{
         static Boid Random(){
             return { 
                         Boid::Coord_t::Random().cwiseProduct((Boid::HALF_SIMULATION_SIZE - Boid::Coord_t::Constant(Boid::BBOX_RADIUS))),
-                        Boid::ClampVelocity( Coord_t::Random() * Boid::MAX_SPEED ),
-                        randFloat(Boid::BOID_SIZE * 5, 1),
-                        randFloat(Boid::BOID_SIZE * 2, 0.3),
-                        randFloat(Boid::BOID_SIZE * 7, 1.1)
+                        Boid::ClampVelocity( Coord_t::Random() * Boid::MAX_SPEED )
             };
         }
 
@@ -373,18 +339,18 @@ public std::enable_shared_from_this<Boid>{
 
 
 
-                const Boid::Coord_t center_of_group_perception =   Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, b.perception_radius, 0.50);
-                const Boid::Coord_t force_of_group_perception =     (center_of_group_perception - b.position) / b.perception_radius;
+                const Boid::Coord_t center_of_group_perception =   Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, Boid::PERCEPTION_RADIUS, 0.50);
+                const Boid::Coord_t force_of_group_perception =     (center_of_group_perception - b.position) / Boid::PERCEPTION_RADIUS;
 
                 
                 
-                const Boid::Coord_t center_of_group_separation = Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, b.separarion_radius, INFINITY);
-                const Boid::Coord_t aplha_to_group_separation =  (center_of_group_separation - b.position) / b.separarion_radius;
+                const Boid::Coord_t center_of_group_separation = Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, Boid::SEPARATION_RADIUS, INFINITY);
+                const Boid::Coord_t aplha_to_group_separation =  (center_of_group_separation - b.position) / Boid::SEPARATION_RADIUS;
                 const Boid::Coord_t force_of_group_separation = - (Coord_t::Ones().normalized() - aplha_to_group_separation.cwiseAbs()).array() * aplha_to_group_separation.cwiseSign().array();
 
 
     
-                const Boid::Coord_t velocity_of_group_alignment =   Boid::ComputeAvgInRadiusAngle(dist_list, vel_list,b.alignment_radius, 0.75);
+                const Boid::Coord_t velocity_of_group_alignment =   Boid::ComputeAvgInRadiusAngle(dist_list, vel_list, Boid::ALIGNMENT_RADIUS, 0.75);
                 const Boid::Coord_t force_of_group_velocity  =      (velocity_of_group_alignment - b.velocity) / (Boid::MAX_SPEED * 2);
 
 
@@ -447,10 +413,7 @@ public std::enable_shared_from_this<Boid>{
                 for(const Boid::Ptr_t & b : input){
                     res.push_back( std::make_shared<Boid>( 
                                                             Boid::ClampPosition(b->position),
-                                                            b->velocity,
-                                                            b->perception_radius,
-                                                            b->separarion_radius,
-                                                            b->alignment_radius
+                                                            b->velocity
                                                         )
                     );
                 }
@@ -510,6 +473,6 @@ float_t Boid::PERCEPTION_RADIUS =  0.1;
 float_t Boid::SEPARATION_RADIUS =  Boid::PERCEPTION_RADIUS / 4;
 float_t Boid::ALIGNMENT_RADIUS =   Boid::PERCEPTION_RADIUS * 3;
 
-float_t Boid::PERCEPTION_WEIGHT =  0.6;
-float_t Boid::SEPARATION_WEIGHT =  0.25;
-float_t Boid::ALIGNMENT_WEIGHT =   0.7;
+float_t Boid::PERCEPTION_WEIGHT =  0.2;
+float_t Boid::SEPARATION_WEIGHT =  0.75;
+float_t Boid::ALIGNMENT_WEIGHT =   0.3;

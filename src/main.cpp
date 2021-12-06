@@ -17,7 +17,7 @@ int main(int argc, char *argv[]){
 
     std::cout << "Size of boid:\t" << sizeof(Boid) << std::endl;
 
-    std::exit(0);
+    // std::exit(0);
    
 
     // Check inputs.
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]){
     Boid::SetSimulationSize(Boid::Coord_t{16.0 / 9.0, 1} * 3);
 
 
-    Boid::PtrList_t boids_list = Boid::RandomPtrList(150);
+    Boid::PtrList_t boids_list = Boid::RandomPtrList(randFloat(Boid::ABS_MIN_BOID_QTY, Boid::ABS_MAX_BOID_QTY));
 
 
 
