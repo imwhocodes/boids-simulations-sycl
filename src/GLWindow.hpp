@@ -107,7 +107,32 @@ GLFWwindow * CreateOpenWindow(const unsigned int w, const unsigned int h){
     return window;
 }
 
-void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat radius){
+// void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat radius){
+
+// 	constexpr size_t triangleAmount = 20; //# of triangles used to draw circle
+	
+// 	// GLfloat twicePi = 2.0f * M_PI;
+	
+// 	glBegin(GL_TRIANGLE_FAN);
+
+// 		glVertex2f(x, y); // center of circle
+
+// 		for(size_t i = 0; i <= triangleAmount; i++) { 
+
+//       const GLfloat alpha = i * M_PI * 2 / triangleAmount;
+
+// 			glVertex2f(
+// 		              x + (radius * std::cos(alpha)), 
+// 			            y + (radius * std::sin(alpha))
+// 			); 
+// 		}
+
+// 	glEnd();
+// }
+
+
+
+void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat z, GLfloat radius){
 
 	constexpr size_t triangleAmount = 20; //# of triangles used to draw circle
 	
@@ -115,21 +140,73 @@ void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat radius){
 	
 	glBegin(GL_TRIANGLE_FAN);
 
-		glVertex2f(x, y); // center of circle
+		glVertex3f(x, y, z); // center of circle
 
 		for(size_t i = 0; i <= triangleAmount; i++) { 
 
       const GLfloat alpha = i * M_PI * 2 / triangleAmount;
 
-			glVertex2f(
+			glVertex3f(
 		              x + (radius * std::cos(alpha)), 
-			            y + (radius * std::sin(alpha))
+			            y + (radius * std::sin(alpha)),
+                  z
 			); 
 		}
 
 	glEnd();
 }
 
+void DrawCube(const Eigen::Vector3f & min, const Eigen::Vector3f & max){
+
+  glColor3f(0, 1, 0);
+
+  glLineWidth(0.25);
+
+  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);  // this tells it to only render lines
+
+  glBegin(GL_LINES);
+
+    glVertex3f(min.x(), min.y(), min.z());
+    glVertex3f(max.x(), min.y(), min.z());
+
+    glVertex3f(min.x(), min.y(), max.z());
+    glVertex3f(max.x(), min.y(), max.z());
+
+    glVertex3f(min.x(), max.y(), min.z());
+    glVertex3f(max.x(), max.y(), min.z());
+
+    glVertex3f(min.x(), max.y(), max.z());
+    glVertex3f(max.x(), max.y(), max.z());
+    
+
+
+    glVertex3f(min.x(), min.y(), min.z());
+    glVertex3f(min.x(), max.y(), min.z());
+
+    glVertex3f(min.x(), min.y(), max.z());
+    glVertex3f(min.x(), max.y(), max.z());
+
+    glVertex3f(max.x(), min.y(), min.z());
+    glVertex3f(max.x(), max.y(), min.z());
+
+    glVertex3f(max.x(), min.y(), max.z());
+    glVertex3f(max.x(), max.y(), max.z());
+
+
+    glVertex3f(min.x(), min.y(), min.z());
+    glVertex3f(min.x(), min.y(), max.z());
+
+    glVertex3f(max.x(), min.y(), min.z());
+    glVertex3f(max.x(), min.y(), max.z());
+
+    glVertex3f(min.x(), max.y(), min.z());
+    glVertex3f(min.x(), max.y(), max.z());
+
+    glVertex3f(max.x(), max.y(), min.z());
+    glVertex3f(max.x(), max.y(), max.z());
+
+	glEnd();
+}
 
 char const* glErrorToString(GLenum const err) noexcept
 {

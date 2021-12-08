@@ -25,9 +25,9 @@ public std::enable_shared_from_this<Boid>{
 
     public:
 
-        using Coord_t = Eigen::Vector2f;
-        using CoordList_t = Eigen::Matrix2Xf;
-        using DistanceList_t = Eigen::Matrix2Xf;
+        using Coord_t = Eigen::Vector3f;
+        using CoordList_t = Eigen::Matrix3Xf;
+        using DistanceList_t = Eigen::Matrix3Xf;
 
         using Ptr_t = std::shared_ptr<Boid>;
         using List_t = std::vector<Boid>;
@@ -156,8 +156,13 @@ public std::enable_shared_from_this<Boid>{
             DrawFilledCircle(
                                 this->position.x(),
                                 this->position.y(),
+                                this->position.z(),
                                 Boid::BOID_SIZE / 2
             );
+        }
+
+        static void DrawSimBBox() {
+            DrawCube(-Boid::HALF_SIMULATION_SIZE, Boid::HALF_SIMULATION_SIZE);
         }
 
 
@@ -419,7 +424,29 @@ public std::enable_shared_from_this<Boid>{
         }
 
 
+        // static void SetSimulationSize(const Coord_t & size){
+        //     Boid::HALF_SIMULATION_SIZE = size / 2;
+
+        //     glMatrixMode(GL_PROJECTION);
+        //     glLoadIdentity();
+
+        //     const Boid::Coord_t min = -Boid::HALF_SIMULATION_SIZE;
+        //     const Boid::Coord_t max =  Boid::HALF_SIMULATION_SIZE;
+
+        //     glOrtho(min.x(), max.x(), max.y(), min.y(), -1, 1);
+
+        //     glMatrixMode(GL_MODELVIEW);
+        // }
+
         static void SetSimulationSize(const Coord_t & size){
+            
+            constexpr float_t z_near = 1;
+            constexpr float_t z_far = 100;
+            constexpr float_t fov = 70;
+
+            constexpr float_t aspect = 1;
+
+
             Boid::HALF_SIMULATION_SIZE = size / 2;
 
             glMatrixMode(GL_PROJECTION);
@@ -428,10 +455,25 @@ public std::enable_shared_from_this<Boid>{
             const Boid::Coord_t min = -Boid::HALF_SIMULATION_SIZE;
             const Boid::Coord_t max =  Boid::HALF_SIMULATION_SIZE;
 
-            glOrtho(min.x(), max.x(), max.y(), min.y(), -1, 1);
+            // glFrustum(min.x(), max.x(), min.y(), max.y(), max.z(), max.z() * 3);
+
+            // glPerspective(90, 1, 1, 100);
+
+            // glFrustum(1.0, -1.0, -1.0, 1.0, 0.1, 1);
+
+            
+            const float_t fH = std::tan( fov / 360.0f * M_PI ) * z_near;
+            const float_t fW = fH * aspect;
+
+            glFrustum( -fW, fW, -fH, fH, z_near, z_far );
+
+            glTranslatef(0, 0, min.z() * 3);
+           
 
             glMatrixMode(GL_MODELVIEW);
         }
+
+
 
 
         static Boid::PtrList_t SetSimulationSize(const Coord_t & size, const Boid::PtrList_t & input){

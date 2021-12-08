@@ -35,16 +35,14 @@ int main(int argc, char *argv[]){
 
 
     GLFWwindow * window = CreateOpenWindow(
-                                                1920,
+                                                1080,
                                                 1080
                                             );
 
     /* Make the window's context current */
     
 
-    Boid::SetSimulationSize(Boid::Coord_t{16.0 / 9.0, 1} * 3);
-
-
+    Boid::SetSimulationSize(Boid::Coord_t{1, 1, 1} * 3);
     Boid::PtrList_t boids_list = Boid::RandomPtrList(randFloat(Boid::ABS_MIN_BOID_QTY, Boid::ABS_MAX_BOID_QTY));
 
 
@@ -93,7 +91,7 @@ int main(int argc, char *argv[]){
                         }
 
                 case 5: {
-                    boids_list = Boid::SetSimulationSize(Boid::Coord_t{16.0 / 9.0, 1} * std::lerp(1.0f, 10.0f, c.getValueNorm()), boids_list);
+                    boids_list = Boid::SetSimulationSize(Boid::Coord_t{1, 1, 1} * std::lerp(0.1f, 10.0f, c.getValueNorm()), boids_list);
                     break;
                 }
 
@@ -147,6 +145,11 @@ int main(int argc, char *argv[]){
         /* Render here */
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
+        glRotatef(0.13, 1, 0, 0);
+        glRotatef(0.17, 0, 1, 0);
+        glRotatef(0.09 , 0, 0, 1);
+
+
         next_frame_ticks_virtual = next_frame_ticks_virtual + FPS_PERIOD_TARGET;
 
 
@@ -166,6 +169,8 @@ int main(int argc, char *argv[]){
         for(const auto & b : boids_list){
             b->drawSelf();
         }
+
+        Boid::DrawSimBBox();
 
         const auto draw_end_ticks = Clock_t::now();
 

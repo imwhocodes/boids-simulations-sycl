@@ -20,13 +20,13 @@ add_definitions( -Wall )
 add_definitions( -Wextra )
 add_definitions( -ffast-math )
 add_definitions( -march=native )
+# add_definitions( -DEIGEN_USE_SYCL=1 )
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 
 string( REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 
 
 # add_subdirectory(lib/rtmidi)
-
 
 
 find_package (Eigen3 3.4 REQUIRED NO_MODULE)
@@ -41,6 +41,7 @@ find_package(RtMidi REQUIRED)
 
 find_package(OpenMP REQUIRED)
 
+find_package(hipSYCL REQUIRED)
 
 
 # add the executable
@@ -51,3 +52,5 @@ target_link_libraries( boids glfw)
 target_link_libraries( boids OpenGL::GL )
 target_link_libraries( boids RtMidi::rtmidi )
 target_link_libraries( boids OpenMP::OpenMP_CXX)
+# target_link_libraries( boids hipSYCL)
+

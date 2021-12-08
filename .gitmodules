@@ -1,3 +1,9 @@
 [submodule "lib/rtmidi"]
 	path = lib/rtmidi
 	url = https://github.com/thestk/rtmidi
+[submodule "lib/sycl-gtx"]
+	path = lib/sycl-gtx
+	url = https://github.com/ProGTX/sycl-gtx.git
+[submodule "lib/hipSYCL"]
+	path = lib/hipSYCL
+	url = https://github.com/illuhad/hipSYCL.git
