@@ -1,227 +1,175 @@
-#include "Boid.hpp"
-#include "GLWindow.hpp"
+#include <CL/sycl.hpp>
 #include <iostream>
-#include <ctime>
-
 #include <chrono>
+#include <memory>
+#include <vector>
 #include <thread>
+#include "GLWindow.hpp"
+#include "Boid.hpp"
+#include "Queue.hpp"
 
-#include "RtMidi.h"
+namespace sycl =  cl::sycl;
 
-#include "MidiDecoder.hpp"
+using Clock_t = std::chrono::high_resolution_clock;
+
+
+
+constexpr size_t BOIDS_NUM = 1'000;//45'000;//20'000;//3000000;
+
+constexpr std::chrono::nanoseconds FPS_PERIOD_TARGET = std::chrono::nanoseconds(int(1.0E9 / 60.0)) ;
+
+
+Queue<SimSample> sample_queue;
+GLFWwindow * GL_window;
+
+
+void nextGen(){
+
+  // sycl::gpu_selector device_selector;
+  sycl::default_selector device_selector;
+  sycl::queue gpu_queue(device_selector);
+  std::cout << "Running on " << gpu_queue.get_device().get_info<sycl::info::device::name>() << "\n";
+
+
+  SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
+    SimulationParams::Coord_t{1, 1, 1},
+    SimulationParams::Coord_t{1, 1, 1},
+    0.025,
+    0.005,
+    0.15
+  );
+
+
+  sim_params_ptr->SetSimulationSize(SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{5}});
+
+
+  BoidBase::VectorPrt_t last_simulation_boids  = std::make_shared<BoidBase::Vector_t>( BOIDS_NUM );
+
+  for(BoidBase & b : *last_simulation_boids){
+    b = BoidBase::Random(*sim_params_ptr);
+  } 
+
+
+  auto last_frame_ticks_real = Clock_t::now();
+
+  while (!glfwWindowShouldClose(GL_window)){
+
+    const auto start_computing = Clock_t::now();
+
+    BoidBase::VectorPrt_t boids_out = BoidBase::ComputeNextGen(last_simulation_boids, sim_params_ptr, gpu_queue);
+
+    const auto end_computing = Clock_t::now();
+
+    const auto computing_delta_ticks = end_computing - start_computing;
+
+
+    sample_queue.pushWait(std::make_shared<SimSample>(boids_out, sim_params_ptr));
+
+    last_simulation_boids = boids_out;
+
+    const auto now = Clock_t::now();
+
+    const auto frame_delta_ticks = now - last_frame_ticks_real;
+
+    last_frame_ticks_real = now;
+
+    std::cout <<  "Compu max/real fps:\t" << 
+                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
+                  "  /  " <<
+                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() << 
+                  '\n' <<
+    std::endl;
+
+  }
+
+}
+
+void showBoids(){
+
+  auto last_frame_ticks_real = Clock_t::now();
+
+  auto next_frame_ticks_virtual = last_frame_ticks_real;
+
+
+  while(!glfwWindowShouldClose(GL_window)){
+
+    const auto s = sample_queue.popWait();
+
+    const auto draw_start_ticks = Clock_t::now();
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
+
+    for(const BoidBase & b : *(s->boids)){
+      b.drawSelf(*(s->params));
+    }
+
+    glRotatef(0.13, 1, 0, 0);
+    glRotatef(0.17, 0, 1, 0);
+    glRotatef(0.09 , 0, 0, 1);
+
+    s->params->DrawSimBBox();
+
+    const auto draw_end_ticks = Clock_t::now();
+
+    const auto draw_delta_ticks = draw_end_ticks - draw_start_ticks;
+
+
+    /* Poll for and process events */
+    glfwPollEvents();
+
+    const auto e = glGetError();
+
+    if(e){
+        std::cout << glErrorToString(e) << std::endl;
+    }
+
+
+    next_frame_ticks_virtual += FPS_PERIOD_TARGET;
+
+    const auto check_sleep = Clock_t::now();
+
+    if(check_sleep < next_frame_ticks_virtual) {
+
+      std::this_thread::sleep_for( next_frame_ticks_virtual - check_sleep);
+
+      while(Clock_t::now() < next_frame_ticks_virtual);
+    }
+
+    /* Swap front and back buffers */
+    glfwSwapBuffers(GL_window);
+
+    const auto now = Clock_t::now();
+
+    const auto frame_delta_ticks = now - last_frame_ticks_real;
+
+    last_frame_ticks_real = now;
+
+    std::cout <<
+                "Draws max/real fps:\t" << 
+                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
+                "   /  " <<                              
+                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
+                '\n' <<
+    std::endl;
+
+  }
+
+}
+
 
 int main(int argc, char *argv[]){
 
-    srand(0);
 
 
-    std::cout << "Size of boid:\t" << sizeof(Boid) << std::endl;
+  GL_window = CreateOpenWindow(
+                                1080,
+                                1080
+                            );
 
-    // std::exit(0);
-   
+  std::thread worker(nextGen);
 
-    // Check inputs.
+  showBoids();
+ 
+  std::cout << "!!!END!!!" << std::endl;
 
-    MidiDecoder akai_mpk;
-
-
-    try {
-        akai_mpk.open(0);
-    }
-
-    catch (const RtMidiError & error) {
-        error.printMessage();
-    }
-
-
-    GLFWwindow * window = CreateOpenWindow(
-                                                1080,
-                                                1080
-                                            );
-
-    /* Make the window's context current */
-    
-
-    Boid::SetSimulationSize(Boid::Coord_t{1, 1, 1} * 3);
-    Boid::PtrList_t boids_list = Boid::RandomPtrList(randFloat(Boid::ABS_MIN_BOID_QTY, Boid::ABS_MAX_BOID_QTY));
-
-
-
-
-    // Boid::Coord_t test = Boid::Coord_t::Random()
-
-
-
-    constexpr float_t FPS_TARGET = 30;
-
-    constexpr std::chrono::nanoseconds FPS_PERIOD_TARGET = std::chrono::microseconds(int(1000 / FPS_TARGET)) ;
-
-    using Clock_t = std::chrono::high_resolution_clock;
-
-    auto last_frame_ticks_real = Clock_t::now();
-    auto next_frame_ticks_virtual = last_frame_ticks_real;
-
-
-    /* Loop until the user closes the window */
-    while (!glfwWindowShouldClose(window)){
-
-        std::cout << "\n\n\n//////////////\n";
-
-        const MidiCommand::List_t midi_cmds = akai_mpk.getRawCommands();
-
-        const MidiCommand::List_t midi_knobs =  MidiCommand::KnobMergedLastValue(midi_cmds);
-
-
-        std::cout << "KnobMerged:\t" << midi_knobs.size() << '\n';
-
-        for(const MidiCommand & c : midi_knobs){
-            std::cout << "Knob:\t" << int(c.getInput()) << "\tValue:\t" << int(c.getValue()) << "\t( " << c.getValueNorm() << " )\n";
-
-            switch (c.getInput()){
-
-                case 1: {
-                            const float_t new_qty = std::lerp(
-                                                                float_t(Boid::ABS_MIN_BOID_QTY),
-                                                                float_t(Boid::ABS_MAX_BOID_QTY),
-                                                                c.getValueSigma(0.5)
-                                                            );
-                            
-                            boids_list = Boid::UpdateBoidQuantity(boids_list, std::round(new_qty));
-                            break;
-                        }
-
-                case 5: {
-                    boids_list = Boid::SetSimulationSize(Boid::Coord_t{1, 1, 1} * std::lerp(0.1f, 10.0f, c.getValueNorm()), boids_list);
-                    break;
-                }
-
-
-                case 2: {
-                    Boid::SetSeparationRadius(c.getValueNorm());
-                    break;
-                }
-
-                case 6: {
-                    Boid::SetSeparationWeight(c.getValueNorm());
-                    break;
-                }
-
-
-
-                case 3: {
-                    Boid::SetPerceptionRadius(c.getValueNorm());
-                    break;
-                }
-
-                case 7: {
-                    Boid::SetPerceptionWeight(c.getValueNorm());
-                    break;
-                }
-
-
-                case 4: {
-                    Boid::SetAlignmentRadius(c.getValueNorm());
-                    break;
-                }
-
-                case 8: {
-                    Boid::SetAlignmentWeight(c.getValueNorm());
-                    break;
-                }
-
-                default:
-                    break;
-            }
-        }
-
-        const auto computing_start_ticks = Clock_t::now();
-
-        boids_list = Boid::MainComputeNewGeneration(boids_list);
-
-        const auto computing_end_ticks = Clock_t::now();
-
-
-
-        /* Render here */
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
-
-        glRotatef(0.13, 1, 0, 0);
-        glRotatef(0.17, 0, 1, 0);
-        glRotatef(0.09 , 0, 0, 1);
-
-
-        next_frame_ticks_virtual = next_frame_ticks_virtual + FPS_PERIOD_TARGET;
-
-
-        const auto check_sleep = Clock_t::now();
-
-        if(check_sleep < next_frame_ticks_virtual) {
-
-            std::this_thread::sleep_for( next_frame_ticks_virtual - check_sleep);
-
-            while(Clock_t::now() < next_frame_ticks_virtual);
-        }
-
-
-
-        const auto draw_start_ticks = Clock_t::now();
-
-        for(const auto & b : boids_list){
-            b->drawSelf();
-        }
-
-        Boid::DrawSimBBox();
-
-        const auto draw_end_ticks = Clock_t::now();
-
-
-        const auto draw_delta_ticks = draw_end_ticks - draw_start_ticks;
-
-
-        // int width, height;
-        // glfwGetFramebufferSize(window, &width, &height);
-
-        // glColor3f(1.0, 0, 1.0);
-
-        // glBegin(GL_TRIANGLES);
-        //     glVertex3f(0.0, 0.0, 0);
-        //     glVertex3f(width, 0.0, 0);
-        //     glVertex3f(0.0, height, 0);
-        // glEnd();
-
-        /* Swap front and back buffers */
-        glfwSwapBuffers(window);
-
-
-        /* Poll for and process events */
-        glfwPollEvents();
-
-        const auto e = glGetError();
-
-        if(e){
-            std::cout << glErrorToString(e) << std::endl;
-        }
-
-
-        const auto computing_delta_ticks = computing_end_ticks - computing_start_ticks;
-
-
-        const auto now = Clock_t::now();
-
-        const auto frame_delta_ticks = now - last_frame_ticks_real;
-
-        last_frame_ticks_real = now;
-
-        std::cout <<
-            "Compu fps:\t" << 1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() << '\n' <<
-            "Draws fps:\t" << 1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()      << '\n' <<
-            "Real  fps:\t" << 1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count()     << '\n' <<
-
-        std::endl;
-
-    }
-
-    glfwTerminate();
-
-    return 0;
 }

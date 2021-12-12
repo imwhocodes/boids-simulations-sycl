@@ -79,6 +79,21 @@
         "stop_token": "cpp",
         "cinttypes": "cpp",
         "ranges": "cpp",
-        "__functional_03": "cpp"
+        "__functional_03": "cpp",
+        "csignal": "cpp",
+        "strstream": "cpp",
+        "codecvt": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "unordered_set": "cpp",
+        "fstream": "cpp",
+        "future": "cpp",
+        "iomanip": "cpp",
+        "cfenv": "cpp",
+        "typeindex": "cpp",
+        "valarray": "cpp"
+    },
+    "files.exclude": {
+        "**/.git": false
     }
 }

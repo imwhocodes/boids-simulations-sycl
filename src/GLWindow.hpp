@@ -1,9 +1,12 @@
 #pragma once
 #define GLFW_INCLUDE_GLCOREARB
 #include <GLFW/glfw3.h>
-#include <OpenGL/gl.h>
+#include <GL/gl.h>
 #include <iostream>
-#include <Eigen/Dense>
+#include <CL/sycl.hpp>
+
+namespace sycl =  cl::sycl;
+
 
 void  printErrorCallback(const int err, const char * desc){
     std::cerr << "Error: " << err << '\t' << desc << std::endl;
@@ -25,7 +28,7 @@ void  printErrorCallback(const int err, const char * desc){
 // }
 
 
-using Color_t = Eigen::Vector3f;
+using Color_t = sycl::float3;
 
 Color_t hsv2rgb(const Color_t & hsv ){
 
@@ -156,7 +159,7 @@ void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat z, GLfloat radius){
 	glEnd();
 }
 
-void DrawCube(const Eigen::Vector3f & min, const Eigen::Vector3f & max){
+void DrawCube(const sycl::float3 & min, const sycl::float3 & max){
 
   glColor3f(0, 1, 0);
 

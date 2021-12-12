@@ -12,9 +12,10 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
-            "environment": [],
+            "environment": [ { "name": "DISPLAY", "value":":0" } ],
             "externalConsole": false,
-            "MIMode": "lldb"
+            "MIMode": "lldb",
+            "miDebuggerPath": "/usr/bin/lldb-12"
         }
     ]
 }

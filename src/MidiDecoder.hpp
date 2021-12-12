@@ -1,12 +1,13 @@
 #pragma once
 
-#include "RtMidi.h"
 
 #include <stdint.h>
 #include <vector>
 #include <functional>
 #include <iostream>
 #include <optional>
+
+#include <rtmidi/RtMidi.h>
 
 class MidiCommand {
 

@@ -1,9 +1,10 @@
 #pragma once
-#include <Eigen/Dense>
+#include <memory>
 #include <vector>
+#include <CL/sycl.hpp>
 #include "GLWindow.hpp"
 
-#include <memory>
+
 
 float_t randFloat() {
     return float_t(rand()) / float_t(RAND_MAX);
@@ -17,541 +18,450 @@ float_t randFloat(const float_t min, const float_t max) {
     return min + randFloat(max - min);
 }
 
+using GCoord_t = sycl::float3;
 
 
-class Boid 
-    :
-public std::enable_shared_from_this<Boid>{
+class SimulationParams {
 
     public:
-
-        using Coord_t = Eigen::Vector3f;
-        using CoordList_t = Eigen::Matrix3Xf;
-        using DistanceList_t = Eigen::Matrix3Xf;
-
-        using Ptr_t = std::shared_ptr<Boid>;
-        using List_t = std::vector<Boid>;
-        using PtrList_t = std::vector<Ptr_t>;
-
-        static Coord_t HALF_SIMULATION_SIZE;
-
-        static constexpr float_t BOID_SIZE  =  0.005;
-
-        static float_t PERCEPTION_RADIUS;
-        static float_t SEPARATION_RADIUS;
-        static float_t ALIGNMENT_RADIUS;
-        static constexpr float_t BBOX_RADIUS =        0.1;
-
-
-        static float_t PERCEPTION_WEIGHT;
-        static float_t SEPARATION_WEIGHT;
-        static float_t ALIGNMENT_WEIGHT;
-        static constexpr float_t BBOX_WEIGHT =        1;
-
-
-        static constexpr float_t MAX_SPEED = 0.025;
-        static constexpr float_t ACCELERATION = 0.005;
-
-
-        static constexpr size_t ABS_MIN_BOID_QTY = 5;
-        static constexpr size_t ABS_MAX_BOID_QTY = 4000;
-
-
+      using Ptr = std::shared_ptr<SimulationParams>;
+      using Coord_t = GCoord_t;
 
     protected:
+      Coord_t _half_bbox_size;
+      Coord_t _weights;
+      float_t _max_speed;
+      float_t _acceleration;
+      float_t _bbox_repel_radius;
 
-        const Coord_t position;
-        const Coord_t velocity;
-        const Coord_t acceleration;
-
-        const float_t perception_radius;
-        const float_t separarion_radius;
-        const float_t  alignment_radius;
-
-
-
-        static void assertPosition(const Coord_t & pos){
-            assert(
-                (
-                    ( pos.array() >= -Boid::HALF_SIMULATION_SIZE.array() )
-                        &&
-                    ( pos.array() <=  Boid::HALF_SIMULATION_SIZE.array() )
-                ).all()
-            );
-        }
-
-        static void assertVelocity(const Coord_t & vel){
-            assert(vel.norm() <= (Boid::MAX_SPEED + 0.01));
-        }
-    
     public:
-
-        // Boid(const float_t x, const float_t y)
-        //     :
-        // Boid{Coord_t{x, y}, Coord_t::Zero()}
-        // {}
-
-        Boid(const Coord_t & pos, const Coord_t & vel, const float_t perception_radius, const float_t separarion_radius, const float_t alignment_radius)
-            :
-        position{pos},
-        velocity{vel},
-        acceleration{Boid::Coord_t::Zero()},
-        perception_radius{perception_radius},
-        separarion_radius{separarion_radius},
-        alignment_radius{alignment_radius}
-        {
-            Boid::assertPosition(pos);
-            Boid::assertVelocity(vel);
-        }
-
-        Boid(const Boid & boid, const Coord_t & acceleration )
-            :
-        position{ Boid::ClampPosition( boid.position + boid.velocity ) },
-        velocity{ Boid::ClampVelocity( boid.velocity + acceleration ) },
-        acceleration{acceleration},
-        perception_radius{boid.perception_radius},
-        separarion_radius{boid.separarion_radius},
-        alignment_radius{boid.alignment_radius}
-        {
-
-        }
-
-        const Coord_t & getPosition() const {
-            return this->position;
-        }
+      SimulationParams(const Coord_t & half_bbox_size, const Coord_t & weights, const float_t max_speed, const float_t acceleration, const float_t bbox_repel_radius)
+        :
+      _half_bbox_size{half_bbox_size},
+      _weights{weights},
+      _max_speed{max_speed},
+      _acceleration{acceleration},
+      _bbox_repel_radius{bbox_repel_radius}
+      {}
 
 
-        Boid applyForce(const Coord_t & force) const {
-
-            return this->applyAcceleration(force * Boid::ACCELERATION);
-        }
-
-        Boid applyAcceleration(const Coord_t & acceleration) const {
-
-            return Boid{ *this, acceleration };
-        }
-
-        Boid applyNoForce() const {
-            return this->applyAcceleration(Coord_t::Zero());
-        }
+      void SetSimulationSize(const Coord_t & size){   
+        this->_half_bbox_size = size / 2;
+      }
 
 
-        // float_t distance(const Boid & other) const {
-        //     return (this->position - other.position).norm();
-        // }
-
-        void drawSelf() const {
-
-            const float_t wt = 1 ; //Boid::PERCEPTION_WEIGHT + Boid::SEPARATION_WEIGHT + Boid::SEPARATION_WEIGHT;
-
-            const float_t f = std::min(this->acceleration.norm() / ( Boid::ACCELERATION * wt), 1.0f);
-
-            const Color_t hsv{std::lerp(0.5f, 0.0f, f), 1, 1};
-
-            const Color_t rgb = hsv2rgb(hsv);
-
-            // std::cout << "\n\n" << hsv.transpose() << '\n' << rgb.transpose() << std::endl;
-
-            glColor3f(rgb.x(), rgb.y(), rgb.z());
-            DrawFilledCircle(
-                                this->position.x(),
-                                this->position.y(),
-                                this->position.z(),
-                                Boid::BOID_SIZE / 2
-            );
-        }
-
-        static void DrawSimBBox() {
-            DrawCube(-Boid::HALF_SIMULATION_SIZE, Boid::HALF_SIMULATION_SIZE);
-        }
+      const auto & half_bbox_size() const {
+        return this->_half_bbox_size;
+      }
 
 
-        Coord_t getForceFromBBox() const { 
+      const auto & acceleration() const {
+        return this->_acceleration;
+      }
 
-            // const float_t radius = Eigen::Vector3f{
-            //                                             Boid::PERCEPTION_RADIUS,
-            //                                             Boid::SEPARATION_RADIUS,
-            //                                             Boid::ALIGNMENT_RADIUS
-            //                                     }.maxCoeff();
+      const auto & max_speed() const {
+        return this->_max_speed;
+      }
 
-            return - ( Coord_t::Ones() - ( ( Boid::HALF_SIMULATION_SIZE - this->position.cwiseAbs() ).cwiseMin( Boid::BBOX_RADIUS ) / Boid::BBOX_RADIUS ) ).cwiseProduct(this->position.cwiseSign());
+      const auto & bbox_repel_radius() const {
+        return this->_bbox_repel_radius;
+      }
 
-        }
+      const auto & separation_weight() const {
+        return this->_weights[0];
+      }
+
+      const auto & perception_weight() const {
+        return this->_weights[1];
+      }
+
+      const auto & alignment_weight() const {
+        return this->_weights[2];
+      }
+
+      void DrawSimBBox() const {
+        constexpr float_t z_near = 1;
+        constexpr float_t z_far = 100;
+        constexpr float_t fov = 70;
+
+        constexpr float_t aspect = 1;
+
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+
+        const Coord_t min = -this->_half_bbox_size;
+        const Coord_t max =  this->_half_bbox_size;
+
+        // glFrustum(min.x(), max.x(), min.y(), max.y(), max.z(), max.z() * 3);
+
+        // glPerspective(90, 1, 1, 100);
+
+        // glFrustum(1.0, -1.0, -1.0, 1.0, 0.1, 1);
+
+        const float_t fH = std::tan( fov / 360.0f * M_PI ) * z_near;
+        const float_t fW = fH * aspect;
+
+        glFrustum( -fW, fW, -fH, fH, z_near, z_far );
+
+        glTranslatef(0, 0, min.z() * 3);
+        
+        glMatrixMode(GL_MODELVIEW);
+        DrawCube(-this->_half_bbox_size, this->_half_bbox_size);
+      }
+};
 
 
-        static Boid Random(){
-            return { 
-                        Boid::Coord_t::Random().cwiseProduct((Boid::HALF_SIMULATION_SIZE - Boid::Coord_t::Constant(Boid::BBOX_RADIUS))),
-                        Boid::ClampVelocity( Coord_t::Random() * Boid::MAX_SPEED ),
-                        randFloat(Boid::BOID_SIZE * 5, 1),
-                        randFloat(Boid::BOID_SIZE * 2, 0.3),
-                        randFloat(Boid::BOID_SIZE * 7, 1.1)
+
+
+class BoidBase {
+
+  private:
+    class NextGenKernel;
+
+
+  public:
+    using Coord_t = GCoord_t;
+
+    using Vector_t = std::vector<BoidBase>;
+    using VectorPrt_t = std::shared_ptr<Vector_t>;
+
+    Coord_t position;
+    Coord_t velocity;
+    Coord_t acceleration;
+
+    BoidBase() = default;
+
+    BoidBase(const Coord_t & position, const Coord_t & velocity)
+      :
+    position{position},
+    velocity{velocity}
+    {}
+
+
+    BoidBase(const Coord_t & position, const Coord_t & velocity, const Coord_t & acceleration)
+      :
+    position{position},
+    velocity{velocity},
+    acceleration{acceleration}
+    {}
+
+    static BoidBase Random(const SimulationParams & param){
+
+      return { 
+                                  Coord_t{
+                                            randFloat(-param.half_bbox_size().x(), param.half_bbox_size().x()),
+                                            randFloat(-param.half_bbox_size().y(), param.half_bbox_size().y()),
+                                            randFloat(-param.half_bbox_size().z(), param.half_bbox_size().z())
+                                        },
+                // param.half_bbox_size() * randFloat(-1, 1),
+                BoidBase::ClampVelocity(
+                                          {
+                                            randFloat(-param.max_speed(), param.max_speed()),
+                                            randFloat(-param.max_speed(), param.max_speed()),
+                                            randFloat(-param.max_speed(), param.max_speed())
+                                          },
+                                          param
+                                        )
             };
+    }
+
+
+
+    Coord_t getForceFromBBox(const SimulationParams & param) const {
+
+
+      const Coord_t pos_sign = sycl::sign( this->position );
+
+      const Coord_t pos_abs = this->position * pos_sign;
+
+      const Coord_t inv_abs_clamped_pos = sycl::min(param.half_bbox_size() - pos_abs, param.bbox_repel_radius());
+
+      const Coord_t inv_abs_alpha = Coord_t{Coord_t::element_type{1}} - (inv_abs_clamped_pos / param.bbox_repel_radius());
+      
+      return - (inv_abs_alpha * pos_sign);
+    }
+
+    void drawSelf(const SimulationParams & param) const {
+
+      const float_t wt = 1 ; //Boid::PERCEPTION_WEIGHT + Boid::SEPARATION_WEIGHT + Boid::SEPARATION_WEIGHT;
+
+      const float_t f = std::min(sycl::length(this->acceleration) / ( param.acceleration() * wt), 1.0f);
+
+      const Color_t hsv{std::lerp(0.5f, 0.0f, f), 1, 1};
+
+      const Color_t rgb = hsv2rgb(hsv);
+
+      // std::cout << "\n\n" << hsv.transpose() << '\n' << rgb.transpose() << std::endl;
+
+      glColor3f(rgb.x(), rgb.y(), rgb.z());
+      DrawFilledCircle(
+                          this->position.x(),
+                          this->position.y(),
+                          this->position.z(),
+                          0.005
+      );
+    }
+
+    inline BoidBase applyForce(const Coord_t & force, const SimulationParams & param) const {
+
+      const Coord_t acc = force * param.acceleration();
+
+      return { 
+                BoidBase::ClampPosition( this->position + this->velocity, param ),
+                BoidBase::ClampVelocity( this->velocity + acc, param),
+                acc
+            };
+    }
+
+
+    inline static Coord_t IfNaNGetZero(const Coord_t & in){
+      for(size_t i = 0; i < Coord_t::get_count(); i++){
+        if(std::isnan(in[i])){
+          return Coord_t{Coord_t::element_type{0}};
         }
+      }
 
-        static Coord_t ClampPosition(const Coord_t & position){
-            return position.cwiseMax(-Boid::HALF_SIMULATION_SIZE).cwiseMin(Boid::HALF_SIMULATION_SIZE);
-        }
+      return in;
+    }
 
-        static Coord_t ClampVelocity(const Coord_t & velocity){
-
-            const float_t abs_vel = velocity.norm();
-
-            if(abs_vel <= Boid::MAX_SPEED){
-                return velocity;
-            }
-
-            else{
-                return velocity * (Boid::MAX_SPEED / abs_vel);
-            }
-
-
+    inline static Coord_t ClampVelocity(const Coord_t & velocity, const SimulationParams & param){
             
-        }
+      const float_t abs_vel = sycl::length(velocity);
+
+      if(abs_vel <= param.max_speed()){
+          return velocity;
+      }
+
+      else{
+          return velocity * (param.max_speed() / abs_vel);
+      }
+
+    }
+
+    inline static Coord_t ClampPosition(const Coord_t & position, const SimulationParams & param){
+      return sycl::clamp(position, -param.half_bbox_size(), param.half_bbox_size());
+    }
 
 
-        static Boid::PtrList_t RandomPtrList(const size_t n){
+    // static Coord_t WarpPosition(const Coord_t & position, const SimulationParams & param){
 
-            Boid::PtrList_t res;
+    //   return sycl::fmod(position + param.half_bbox_size() * 2, param.half_bbox_size());
+    // }
 
-            for (size_t i = 0; i < n; i++){
 
-                res.push_back(std::make_shared<Boid>(Boid::Random()));
-            }
+
+    // Coord_t getSeparationForce(const Coord_t & center, const float_t radius) const {
+        
+    //     Coord_t res = Coord_t{ Coord_t::element_type{0} };
+
+    //     const Coord_t dist_vector = center - this->position;
+
+    //     for(size_t i = 0; i < Coord_t::get_count(); i++){
+
+    //       const float_t dist = dist_vector[i];
+
+    //       if(!std::isnan(dist)){
+    //         if(dist > 0){
+    //           res[i] = - ( 1 - (dist / radius) );
+    //         }
+    //         else if (dist < 0){
+    //           res[i] = 1 + (dist / radius);
+    //         }  
+    //       }
+    //     }
+
+      
+    //   // assert(sycl::length(res) <= 1);
+
+    //   return sycl::normalize(res);
+    // }
+
+
+    inline Coord_t getSeparationForce(const Coord_t & center, const float_t & radius) const {
+
+      const Coord_t dist_vector = center - this->position;
+
+      const Coord_t dist_vector_alpha = dist_vector / radius;
+
+      const float_t alpha_dist = sycl::length(dist_vector_alpha);
+
+      assert(alpha_dist <= 1.1 || std::isnan(alpha_dist));
+
+      const float_t inv_force = alpha_dist - 1 ;
+
+      const Coord_t force = (dist_vector_alpha * inv_force);
+
+      assert(sycl::length(force) <= 1 || std::isnan(alpha_dist));
+
+      return IfNaNGetZero( force );
+    }
+
+
+    inline Coord_t getPerceptionForce(const Coord_t & center, const float_t & radius) const {
+      return IfNaNGetZero( ( center - this->position) / radius );
+    }
+
+    inline Coord_t getAlignmentForce(const Coord_t & center, const float_t & max_speed) const {
+      return IfNaNGetZero( ( center - this->velocity ) / (max_speed * 2) );
+    }
+
+
+    //MAYBE SPAW POINTER
+    inline static VectorPrt_t ComputeNextGen( const VectorPrt_t & boids_in, const SimulationParams::Ptr & param, sycl::queue & queue){
+
+      const size_t boid_nums_cpu = boids_in->size();
+
+      VectorPrt_t boids_out = std::make_shared<Vector_t>( boid_nums_cpu );
+      
+      { // start of scope, ensures data copied back to host
+
+        sycl::buffer<BoidBase, 1> boids_in_buffer  ( boids_in->data(),   sycl::range<1>(boid_nums_cpu) );
+        sycl::buffer<BoidBase, 1> boids_out_buffer ( boids_out->data(),  sycl::range<1>(boid_nums_cpu) );
+        // sycl::buffer<SimulationParams, 1> sim_params_buffer  ( sim_params, sycl::range<1>(1));
+
+        queue.submit([&] (sycl::handler& cgh) {
+
+          const size_t boid_nums_gpu = boid_nums_cpu;
+
+          const auto boids_in_acc   = boids_in_buffer   .get_access<sycl::access::mode::read>(cgh);
+          const auto boids_out_acc  = boids_out_buffer  .get_access<sycl::access::mode::discard_write>(cgh);
+          // const auto sim_params_acc = sim_params_buffer .get_access<sycl::access::mode::read>(cgh);
+        
+          const SimulationParams sim_params_gpu = *param;
+
+          // const Coord_t norm_vector = sycl::normalize(Coord_t{ Coord_t::element_type{1} });
+
+          cgh.parallel_for<NextGenKernel>( sycl::range<1>(boid_nums_gpu), [=](sycl::id<1> ic)
+            {
+              const BoidBase cboid = boids_in_acc[ic];
             
-            return res;
+              const Coord_t cvel_norm = sycl::normalize(cboid.velocity);
 
-        }
 
-        static Boid::PtrList_t UpdateBoidQuantity(const Boid::PtrList_t & input, const size_t qty){
+              const float_t separation_max_radius = 0.10;
+              Coord_t separation_tot = - cboid.position;// Coord_t{ Coord_t::element_type{0} }; //;
+              size_t  separation_cnt = 0;
 
-            const size_t in_size = input.size();
 
-            if(in_size < qty){
+              const float_t perception_max_radius = 0.35;
+              const float_t perception_max_angle = 0.3;// 0.8;
+              Coord_t perception_tot = Coord_t{ Coord_t::element_type{0} } ;//- cboid.position;
+              size_t  perception_cnt = 0;
 
-                Boid::PtrList_t res = input;
 
-                const size_t to_add = qty - in_size;
+              const float_t alignment_max_radius = 0.55;
+              const float_t alignment_max_angle = 0.5;
+              Coord_t alignment_tot  = Coord_t{ Coord_t::element_type{0} }; //- cboid.velocity;
+              size_t  alignment_cnt  = 0;
 
-                for(size_t i = 0; i < to_add; i++ ){
-                    res.push_back(std::make_shared<Boid>(Boid::Random()));
+
+              for(size_t il = 0; il < boid_nums_gpu; il++){
+
+                const BoidBase lboid = boids_in_acc[il];
+
+                const Coord_t distance_vect = cboid.position - lboid.position;
+
+                const float_t distance_norm = cl::sycl::length(distance_vect);
+
+                const float_t distance_angle = sycl::dot(distance_vect, cvel_norm) / distance_norm; //NAN for SELF
+
+                const float_t distance_angle_abs = distance_angle * sycl::sign(distance_angle);
+
+
+                // const bool b_sepation = distance_norm < separation_max_radius;
+                // separation_tot += bpos * b_sepation;
+                // separation_cnt += b_sepation;
+                if(distance_norm <= separation_max_radius){
+                  separation_tot += lboid.position;
+                  separation_cnt++;
                 }
 
-                return res;
-            }
 
-            else if(in_size > qty){
-
-                Boid::PtrList_t res;
-                res.reserve(qty);
-
-                const size_t to_remove = in_size - qty;
-
-
-                const size_t skip_every = ( (in_size + (to_remove-1) ) / to_remove );
-
-                for(size_t i = 0; (i < in_size) && (res.size() < qty); i++ ){ // 
-
-                    if( i % skip_every ){
-                        res.push_back(input[i]);
-                    }
+                // const bool b_perception = distance_norm < perception_max_radius && distance_angle < perception_max_angle;
+                // perception_tot += bpos * b_perception;
+                // perception_cnt += b_perception;
+                if(distance_norm <= perception_max_radius && distance_angle_abs <= perception_max_angle){
+                  perception_tot += lboid.position;
+                  perception_cnt++;
                 }
 
-                assert(res.size() == qty);
 
-                return res;
-
-            }
-
-            else{
-                return input;
-            }
-
-            
-        }
-
-        static Boid::CoordList_t GeneratePositionList(const Boid::PtrList_t & input){
-            Boid::CoordList_t res;
-
-            res.resize(Eigen::NoChange, input.size());
-
-            for(size_t i = 0; i < input.size(); i++){
-                res.col(i) = input[i]->position;
-            }
-
-            return res;
-
-        }
-
-
-        static Boid::CoordList_t GenerateVelocityList(const Boid::PtrList_t & input){
-            Boid::CoordList_t res;
-
-            res.resize(Eigen::NoChange, input.size());
-
-            for(size_t i = 0; i < input.size(); i++){
-                res.col(i) = input[i]->velocity;
-            }
-
-            return res;
-
-        }
-
-        static Boid::Coord_t IfNaNGetZero( const Boid::Coord_t & v ){
-            if(v.array().isNaN().any()){
-                return Boid::Coord_t::Zero();
-            }
-            else{
-                return v;
-            }
-        }
-
-
-        static Boid::DistanceList_t GenerateDistanceList(const Boid::CoordList_t & positions, const Boid::CoordList_t & directions, const Eigen::Index idx ){
-
-            Boid::DistanceList_t res;
-
-            assert(positions.cols() == directions.cols());
-
-            res.resize(Eigen::NoChange, positions.cols());
-
-            const auto pi = positions.col(idx);
-            const auto vi = directions.col(idx);
-
-
-            const auto dist_vect = positions.colwise() - pi;
-            const auto dist_norm = dist_vect.colwise().norm();
-
-
-            const auto angles = ( dist_vect.array() * vi.normalized().replicate(1, directions.cols()).array() ).colwise().sum().abs() / dist_norm.array();
-
-
-            assert(dist_norm.rows() == 1);
-
-
-            res.row(0) = dist_norm;
-            res.row(1) = angles;
-
-            // std::cout << res.row(1) << std::endl;
-
-            res.col(idx).array() = INFINITY;
-
-            
-            return res;
-
-        }
-
-
-        static Boid::Coord_t ComputeAvgInRadiusAngle(const Boid::DistanceList_t & distances, const Boid::CoordList_t & values, const float_t max_distance, const float_t max_angle){
-            
-            const auto mask = (distances.row(0).array() <= max_distance) && (distances.row(1).array() <= max_angle);
-
-            const auto mask_sized = mask.replicate< Boid::Coord_t::RowsAtCompileTime, 1 >();
-
-            const auto masked = mask_sized.select(values, 0);
-
-            return  masked.rowwise().sum() / mask.count();
-
-        }
-
-
-        static Boid::PtrList_t MainComputeNewGeneration(const Boid::PtrList_t & input){
-
-            Boid::PtrList_t res(input.size());
-
-            const Boid::CoordList_t pos_list = Boid::GeneratePositionList(input);
-            const Boid::CoordList_t vel_list = Boid::GenerateVelocityList(input);
-
-            assert(!pos_list.array().isNaN().any());
-            assert(!vel_list.array().isNaN().any());
-
-
-            #pragma omp parallel for schedule(static)
-            for(size_t i = 0; i < input.size(); i++ ){
-
-                const Boid & b = *(input[i]);
-
-                const Boid::DistanceList_t dist_list = Boid::GenerateDistanceList(pos_list, vel_list, i);
-
-
-                const Boid::Coord_t force_of_bbox             = b.getForceFromBBox();
-
-
-
-                const Boid::Coord_t center_of_group_perception =   Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, b.perception_radius, 0.50);
-                const Boid::Coord_t force_of_group_perception =     (center_of_group_perception - b.position) / b.perception_radius;
-
-                
-                
-                const Boid::Coord_t center_of_group_separation = Boid::ComputeAvgInRadiusAngle(dist_list, pos_list, b.separarion_radius, INFINITY);
-                const Boid::Coord_t aplha_to_group_separation =  (center_of_group_separation - b.position) / b.separarion_radius;
-                const Boid::Coord_t force_of_group_separation = - (Coord_t::Ones().normalized() - aplha_to_group_separation.cwiseAbs()).array() * aplha_to_group_separation.cwiseSign().array();
-
-
-    
-                const Boid::Coord_t velocity_of_group_alignment =   Boid::ComputeAvgInRadiusAngle(dist_list, vel_list,b.alignment_radius, 0.75);
-                const Boid::Coord_t force_of_group_velocity  =      (velocity_of_group_alignment - b.velocity) / (Boid::MAX_SPEED * 2);
-
-
-                res[i] = std::make_shared<Boid>( 
-                                                    b.applyForce( 
-                                                                    (
-                                                                        ( force_of_bbox * Boid::BBOX_WEIGHT )
-                                                                            +
-                                                                        ( Boid::IfNaNGetZero(force_of_group_perception) * Boid::PERCEPTION_WEIGHT )
-                                                                            + 
-                                                                        ( Boid::IfNaNGetZero(force_of_group_separation) * Boid::SEPARATION_WEIGHT )
-                                                                            + 
-                                                                        ( Boid::IfNaNGetZero(force_of_group_velocity)   * Boid::ALIGNMENT_WEIGHT )
-                                                                    )
-                                                                    //     /
-                                                                    
-                                                                    // (
-                                                                    //     Boid::BBOX_WEIGHT
-                                                                    //         +
-                                                                    //     Boid::PERCEPTION_WEIGHT
-                                                                    //         +
-                                                                    //     Boid::SEPARATION_WEIGHT
-                                                                    //         +
-                                                                    //     Boid::ALIGNMENT_WEIGHT
-                                                                    // )
-                                                                ) 
-                            );
-               
-            }
-
-            return res;
-        }
-
-
-        // static void SetSimulationSize(const Coord_t & size){
-        //     Boid::HALF_SIMULATION_SIZE = size / 2;
-
-        //     glMatrixMode(GL_PROJECTION);
-        //     glLoadIdentity();
-
-        //     const Boid::Coord_t min = -Boid::HALF_SIMULATION_SIZE;
-        //     const Boid::Coord_t max =  Boid::HALF_SIMULATION_SIZE;
-
-        //     glOrtho(min.x(), max.x(), max.y(), min.y(), -1, 1);
-
-        //     glMatrixMode(GL_MODELVIEW);
-        // }
-
-        static void SetSimulationSize(const Coord_t & size){
-            
-            constexpr float_t z_near = 1;
-            constexpr float_t z_far = 100;
-            constexpr float_t fov = 70;
-
-            constexpr float_t aspect = 1;
-
-
-            Boid::HALF_SIMULATION_SIZE = size / 2;
-
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-
-            const Boid::Coord_t min = -Boid::HALF_SIMULATION_SIZE;
-            const Boid::Coord_t max =  Boid::HALF_SIMULATION_SIZE;
-
-            // glFrustum(min.x(), max.x(), min.y(), max.y(), max.z(), max.z() * 3);
-
-            // glPerspective(90, 1, 1, 100);
-
-            // glFrustum(1.0, -1.0, -1.0, 1.0, 0.1, 1);
-
-            
-            const float_t fH = std::tan( fov / 360.0f * M_PI ) * z_near;
-            const float_t fW = fH * aspect;
-
-            glFrustum( -fW, fW, -fH, fH, z_near, z_far );
-
-            glTranslatef(0, 0, min.z() * 3);
-           
-
-            glMatrixMode(GL_MODELVIEW);
-        }
-
-
-
-
-        static Boid::PtrList_t SetSimulationSize(const Coord_t & size, const Boid::PtrList_t & input){
-            
-            const Coord_t old_half_size = Boid::HALF_SIMULATION_SIZE;
-            
-            Boid::SetSimulationSize(size);
-
-            if( ( old_half_size.array() > Boid::HALF_SIMULATION_SIZE.array() ).any() ){
-
-                Boid::PtrList_t res;
-
-                for(const Boid::Ptr_t & b : input){
-                    res.push_back( std::make_shared<Boid>( 
-                                                            Boid::ClampPosition(b->position),
-                                                            b->velocity,
-                                                            b->perception_radius,
-                                                            b->separarion_radius,
-                                                            b->alignment_radius
-                                                        )
-                    );
+                // const bool b_alignment = distance_norm < alignment_max_radius && distance_angle < alignment_max_angle;
+                // alignment_tot += bvel * b_alignment;
+                // alignment_cnt += b_alignment;
+                if(distance_norm <= alignment_max_radius && distance_angle_abs <= alignment_max_angle){
+                  alignment_tot += lboid.velocity;
+                  alignment_cnt++;
                 }
 
-                return res;
+              }
+
+
+              assert((separation_cnt - 1) < boid_nums_gpu);
+              // assert((perception_cnt - 1) < boid_nums_gpu);
+              // assert((alignment_cnt  - 1) < boid_nums_gpu);
+
+              const Coord_t separation_center = separation_tot / (separation_cnt - 1);
+              const Coord_t perception_center = perception_tot / (perception_cnt - 0);
+              const Coord_t alignment_center  = alignment_tot  / (alignment_cnt  - 0);
+
+
+
+              // const Coord_t separation_vect = separation_center - cboid.position;
+
+              // const Coord_t separation_vect_alpha = eparation_vect / separation_max_radius ;
+
+              // const Coord_t separation_vect_sign = sycl::sign(separation_vect);
+
+              // separation_vect_off = separation_vect + 
+              // // const Coord_t separation_vect_abs = separation_vect * separation_vect_sign;
+
+              // // const Coord_t separation_force =   - ( ( separation_vect_abs / separation_max_radius ) - norm_vector ) * separation_vect_sign;
+
+              // // const Coord_t separation_force = sycl::max(separation_vect, Coord_t{ Coord_t::element_type{ 0 } } ) - norm_vector;
+
+              const Coord_t bbox_force = cboid.getForceFromBBox(sim_params_gpu);
+
+
+              const Coord_t separation_force = cboid.getSeparationForce( separation_center, separation_max_radius );
+
+              const Coord_t perception_force = cboid.getPerceptionForce( perception_center, perception_max_radius );
+
+              const Coord_t alignment_force =  cboid.getAlignmentForce ( alignment_center,  sim_params_gpu.max_speed() );
+
+
+              assert(sycl::length(separation_force) <= 1.1);
+              assert(sycl::length(perception_force) <= 1.1);
+              assert(sycl::length(alignment_force)  <= 1.1);
+              assert(sycl::length(bbox_force)       <= 2.1);
+
+
+              const Coord_t force = 
+                                    bbox_force
+                                      +
+                                    separation_force
+                                      +
+                                    perception_force
+                                      +
+                                    alignment_force
+                                  ;
+
+              assert(!std::isnan(force.x()));
+              assert(!std::isnan(force.y())); 
+              assert(!std::isnan(force.z()));
+
+              boids_out_acc[ic] = cboid.applyForce(force, sim_params_gpu);
 
             }
+          );
 
-            else{
-                return input;
-            }  
-            
-        }
+        });
 
+      } // end of scope, ensures data copied back to host
 
-        static void SetPerceptionRadius(const float_t r){
-            assert(r >= 0 && r <= 1);
-            Boid::PERCEPTION_RADIUS =  r;
-        }
-
-        static void SetSeparationRadius(const float_t r){
-            assert(r >= 0 && r <= 1);
-            Boid::SEPARATION_RADIUS = r;
-        }
-
-        static void SetAlignmentRadius(const float_t r){
-            assert(r >= 0 && r <= 1);
-            Boid::ALIGNMENT_RADIUS =  r;
-        }
-
-
-        static void SetPerceptionWeight(const float_t w){
-            assert(w >= 0 && w <= 1);
-            Boid::PERCEPTION_WEIGHT =  w;
-        }
-
-        static void SetSeparationWeight(const float_t w){
-            assert(w >= 0 && w <= 1);
-            Boid::SEPARATION_WEIGHT = w;
-        }
-
-        static void SetAlignmentWeight(const float_t w){
-            assert(w >= 0 && w <= 1);
-            Boid::ALIGNMENT_WEIGHT =  w;
-        }
-
-
+      return boids_out;
+    }
 
 };
 
-// sizeof(Boid);
-// static_assert(sizeof(Boid) == sizeof(float_t) * 6, "Check size");
 
-Boid::Coord_t Boid::HALF_SIMULATION_SIZE = Boid::Coord_t::Constant(0.5);
-
-float_t Boid::PERCEPTION_RADIUS =  0.1;
-float_t Boid::SEPARATION_RADIUS =  Boid::PERCEPTION_RADIUS / 4;
-float_t Boid::ALIGNMENT_RADIUS =   Boid::PERCEPTION_RADIUS * 3;
-
-float_t Boid::PERCEPTION_WEIGHT =  0.6;
-float_t Boid::SEPARATION_WEIGHT =  0.25;
-float_t Boid::ALIGNMENT_WEIGHT =   0.7;
