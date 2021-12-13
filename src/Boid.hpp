@@ -5,6 +5,10 @@
 #include "GLWindow.hpp"
 
 
+constexpr float_t CAMERA_FOV = 65;
+constexpr float_t MONITOR_ASPECT_RATIO = 16.0/9.0;
+
+
 
 float_t randFloat() {
     return float_t(rand()) / float_t(RAND_MAX);
@@ -28,25 +32,46 @@ class SimulationParams {
       using Coord_t = GCoord_t;
 
     protected:
-      Coord_t _half_bbox_size;
+      Coord_t _max_radiuses;
+      Coord_t _max_angles;
       Coord_t _weights;
+      Coord_t _half_bbox_size;
       float_t _max_speed;
       float_t _acceleration;
       float_t _bbox_repel_radius;
 
     public:
-      SimulationParams(const Coord_t & half_bbox_size, const Coord_t & weights, const float_t max_speed, const float_t acceleration, const float_t bbox_repel_radius)
+      SimulationParams(
+                          const Coord_t & bbox_size,
+                          const Coord_t & radiuses,
+                          const Coord_t & weights,
+                          const Coord_t & max_angles,
+                          const float_t max_speed,
+                          const float_t acceleration,
+                          const float_t bbox_repel_radius
+                        )
         :
-      _half_bbox_size{half_bbox_size},
+      _max_radiuses{radiuses},
+      _max_angles{DegToNormAbsAngle(max_angles)},
       _weights{weights},
+      _half_bbox_size{bbox_size / 2.0},
       _max_speed{max_speed},
       _acceleration{acceleration},
       _bbox_repel_radius{bbox_repel_radius}
       {}
 
 
+      static Coord_t DegToNormAbsAngle(const Coord_t & angles_deg){
+        return angles_deg / (360.0 * 2.0);
+      }
+
+
       void SetSimulationSize(const Coord_t & size){   
-        this->_half_bbox_size = size / 2;
+        this->_half_bbox_size = size / 2.0;
+      }
+
+      void SetMaxAnglesDeg(const Coord_t & angles_deg){   
+        this->_max_angles = DegToNormAbsAngle(angles_deg);
       }
 
 
@@ -67,6 +92,8 @@ class SimulationParams {
         return this->_bbox_repel_radius;
       }
 
+
+
       const auto & separation_weight() const {
         return this->_weights[0];
       }
@@ -79,18 +106,46 @@ class SimulationParams {
         return this->_weights[2];
       }
 
+
+
+      const auto & separation_max_angle() const {
+        return this->_max_angles[0];
+      }
+
+      const auto & perception_max_angle() const {
+        return this->_max_angles[1];
+      }
+
+      const auto & alignment_max_angle() const {
+        return this->_max_angles[2];
+      }
+
+
+
+      const auto & separation_max_radius() const {
+        return this->_max_radiuses[0];
+      }
+
+      const auto & perception_max_radius() const {
+        return this->_max_radiuses[1];
+      }
+
+      const auto & alignment_max_radius() const {
+        return this->_max_radiuses[2];
+      }
+
+
       void DrawSimBBox() const {
         constexpr float_t z_near = 1;
         constexpr float_t z_far = 100;
-        constexpr float_t fov = 70;
 
-        constexpr float_t aspect = 1;
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
 
         const Coord_t min = -this->_half_bbox_size;
-        const Coord_t max =  this->_half_bbox_size;
+
+        // const Coord_t max =  this->_half_bbox_size;
 
         // glFrustum(min.x(), max.x(), min.y(), max.y(), max.z(), max.z() * 3);
 
@@ -98,8 +153,8 @@ class SimulationParams {
 
         // glFrustum(1.0, -1.0, -1.0, 1.0, 0.1, 1);
 
-        const float_t fH = std::tan( fov / 360.0f * M_PI ) * z_near;
-        const float_t fW = fH * aspect;
+        const float_t fH = std::tan( CAMERA_FOV / 360.0 * M_PI ) * z_near;
+        const float_t fW = fH * MONITOR_ASPECT_RATIO;
 
         glFrustum( -fW, fW, -fH, fH, z_near, z_far );
 
@@ -181,25 +236,44 @@ class BoidBase {
       return - (inv_abs_alpha * pos_sign);
     }
 
-    void drawSelf(const SimulationParams & param) const {
 
+
+    Color_t getForceColor(const SimulationParams & param) const {
       const float_t wt = 1 ; //Boid::PERCEPTION_WEIGHT + Boid::SEPARATION_WEIGHT + Boid::SEPARATION_WEIGHT;
 
       const float_t f = std::min(sycl::length(this->acceleration) / ( param.acceleration() * wt), 1.0f);
 
       const Color_t hsv{std::lerp(0.5f, 0.0f, f), 1, 1};
 
-      const Color_t rgb = hsv2rgb(hsv);
+      return hsv2rgb(hsv);
 
-      // std::cout << "\n\n" << hsv.transpose() << '\n' << rgb.transpose() << std::endl;
+    }
 
+    void drawSelf(const SimulationParams & param) const {
+
+      const Color_t rgb = this->getForceColor(param);
       glColor3f(rgb.x(), rgb.y(), rgb.z());
       DrawFilledCircle(
-                          this->position.x(),
-                          this->position.y(),
-                          this->position.z(),
-                          0.005
+                  this->position,
+                  0.005
       );
+    }
+
+    static void FastDraw(const VectorPrt_t & boids_in, const SimulationParams & param, const float_t radius){
+      
+      glPointSize(radius);
+      glBegin (GL_POINTS);
+
+      for(const BoidBase & b : *boids_in){
+
+        const Color_t rgb = b.getForceColor(param);
+        glColor3f(rgb.x(), rgb.y(), rgb.z());
+
+        glVertex3f (b.position.x(), b.position.y(), b.position.z());
+      }
+
+      glEnd();
+
     }
 
     inline BoidBase applyForce(const Coord_t & force, const SimulationParams & param) const {
@@ -243,45 +317,11 @@ class BoidBase {
     }
 
 
-    // static Coord_t WarpPosition(const Coord_t & position, const SimulationParams & param){
-
-    //   return sycl::fmod(position + param.half_bbox_size() * 2, param.half_bbox_size());
-    // }
-
-
-
-    // Coord_t getSeparationForce(const Coord_t & center, const float_t radius) const {
-        
-    //     Coord_t res = Coord_t{ Coord_t::element_type{0} };
-
-    //     const Coord_t dist_vector = center - this->position;
-
-    //     for(size_t i = 0; i < Coord_t::get_count(); i++){
-
-    //       const float_t dist = dist_vector[i];
-
-    //       if(!std::isnan(dist)){
-    //         if(dist > 0){
-    //           res[i] = - ( 1 - (dist / radius) );
-    //         }
-    //         else if (dist < 0){
-    //           res[i] = 1 + (dist / radius);
-    //         }  
-    //       }
-    //     }
-
-      
-    //   // assert(sycl::length(res) <= 1);
-
-    //   return sycl::normalize(res);
-    // }
-
-
-    inline Coord_t getSeparationForce(const Coord_t & center, const float_t & radius) const {
+    inline Coord_t getSeparationForce(const Coord_t & center, const SimulationParams & param) const {
 
       const Coord_t dist_vector = center - this->position;
 
-      const Coord_t dist_vector_alpha = dist_vector / radius;
+      const Coord_t dist_vector_alpha = dist_vector / param.separation_max_radius();
 
       const float_t alpha_dist = sycl::length(dist_vector_alpha);
 
@@ -293,16 +333,16 @@ class BoidBase {
 
       assert(sycl::length(force) <= 1 || std::isnan(alpha_dist));
 
-      return IfNaNGetZero( force );
+      return IfNaNGetZero( force * param.separation_weight());
     }
 
 
-    inline Coord_t getPerceptionForce(const Coord_t & center, const float_t & radius) const {
-      return IfNaNGetZero( ( center - this->position) / radius );
+    inline Coord_t getPerceptionForce(const Coord_t & center, const SimulationParams & param) const {
+      return IfNaNGetZero( ( ( center - this->position) / param.perception_max_radius() ) * param.perception_weight() );
     }
 
-    inline Coord_t getAlignmentForce(const Coord_t & center, const float_t & max_speed) const {
-      return IfNaNGetZero( ( center - this->velocity ) / (max_speed * 2) );
+    inline Coord_t getAlignmentForce(const Coord_t & center, const SimulationParams & param) const {
+      return IfNaNGetZero( ( ( center - this->velocity ) / (param.max_speed() * 2) ) * param.alignment_weight() );
     }
 
 
@@ -338,19 +378,19 @@ class BoidBase {
               const Coord_t cvel_norm = sycl::normalize(cboid.velocity);
 
 
-              const float_t separation_max_radius = 0.10;
-              Coord_t separation_tot = - cboid.position;// Coord_t{ Coord_t::element_type{0} }; //;
+              // const float_t separation_max_radius = 0.10;
+              Coord_t separation_tot = Coord_t{ Coord_t::element_type{0} } ; //- cboid.position;// Coord_t{ Coord_t::element_type{0} }; //;
               size_t  separation_cnt = 0;
 
 
-              const float_t perception_max_radius = 0.35;
-              const float_t perception_max_angle = 0.3;// 0.8;
+              // const float_t perception_max_radius = 0.35;
+              // const float_t perception_max_angle = 0.3;// 0.8;
               Coord_t perception_tot = Coord_t{ Coord_t::element_type{0} } ;//- cboid.position;
               size_t  perception_cnt = 0;
 
 
-              const float_t alignment_max_radius = 0.55;
-              const float_t alignment_max_angle = 0.5;
+              // const float_t alignment_max_radius = 0.55;
+              // const float_t alignment_max_angle = 0.5;
               Coord_t alignment_tot  = Coord_t{ Coord_t::element_type{0} }; //- cboid.velocity;
               size_t  alignment_cnt  = 0;
 
@@ -371,27 +411,42 @@ class BoidBase {
                 // const bool b_sepation = distance_norm < separation_max_radius;
                 // separation_tot += bpos * b_sepation;
                 // separation_cnt += b_sepation;
-                if(distance_norm <= separation_max_radius){
-                  separation_tot += lboid.position;
-                  separation_cnt++;
+                if(
+                    distance_norm <= sim_params_gpu.separation_max_radius()
+                      &&
+                    distance_angle_abs <= sim_params_gpu.separation_max_angle()
+                  ){
+
+                    separation_tot += lboid.position;
+                    separation_cnt++;
                 }
 
 
                 // const bool b_perception = distance_norm < perception_max_radius && distance_angle < perception_max_angle;
                 // perception_tot += bpos * b_perception;
                 // perception_cnt += b_perception;
-                if(distance_norm <= perception_max_radius && distance_angle_abs <= perception_max_angle){
-                  perception_tot += lboid.position;
-                  perception_cnt++;
+                if(
+                    distance_norm <= sim_params_gpu.perception_max_radius()
+                      &&
+                    distance_angle_abs <= sim_params_gpu.perception_max_angle()
+                  ){
+
+                    perception_tot += lboid.position;
+                    perception_cnt++;
                 }
 
 
                 // const bool b_alignment = distance_norm < alignment_max_radius && distance_angle < alignment_max_angle;
                 // alignment_tot += bvel * b_alignment;
                 // alignment_cnt += b_alignment;
-                if(distance_norm <= alignment_max_radius && distance_angle_abs <= alignment_max_angle){
-                  alignment_tot += lboid.velocity;
-                  alignment_cnt++;
+                if(
+                    distance_norm <= sim_params_gpu.alignment_max_radius()
+                      &&
+                    distance_angle_abs <= sim_params_gpu.alignment_max_angle()
+                  ){
+
+                    alignment_tot += lboid.velocity;
+                    alignment_cnt++;
                 }
 
               }
@@ -401,9 +456,9 @@ class BoidBase {
               // assert((perception_cnt - 1) < boid_nums_gpu);
               // assert((alignment_cnt  - 1) < boid_nums_gpu);
 
-              const Coord_t separation_center = separation_tot / (separation_cnt - 1);
-              const Coord_t perception_center = perception_tot / (perception_cnt - 0);
-              const Coord_t alignment_center  = alignment_tot  / (alignment_cnt  - 0);
+              const Coord_t separation_center = separation_tot / separation_cnt;
+              const Coord_t perception_center = perception_tot / perception_cnt;
+              const Coord_t alignment_center  = alignment_tot  / alignment_cnt;
 
 
 
@@ -420,20 +475,19 @@ class BoidBase {
 
               // // const Coord_t separation_force = sycl::max(separation_vect, Coord_t{ Coord_t::element_type{ 0 } } ) - norm_vector;
 
-              const Coord_t bbox_force = cboid.getForceFromBBox(sim_params_gpu);
+              const Coord_t bbox_force = cboid.getForceFromBBox( sim_params_gpu );
+
+              const Coord_t separation_force = cboid.getSeparationForce( separation_center, sim_params_gpu );
+
+              const Coord_t perception_force = cboid.getPerceptionForce( perception_center, sim_params_gpu );
+
+              const Coord_t alignment_force =  cboid.getAlignmentForce ( alignment_center,  sim_params_gpu );
 
 
-              const Coord_t separation_force = cboid.getSeparationForce( separation_center, separation_max_radius );
-
-              const Coord_t perception_force = cboid.getPerceptionForce( perception_center, perception_max_radius );
-
-              const Coord_t alignment_force =  cboid.getAlignmentForce ( alignment_center,  sim_params_gpu.max_speed() );
-
-
-              assert(sycl::length(separation_force) <= 1.1);
-              assert(sycl::length(perception_force) <= 1.1);
-              assert(sycl::length(alignment_force)  <= 1.1);
-              assert(sycl::length(bbox_force)       <= 2.1);
+              // assert(sycl::length(separation_force) <= 1.1);
+              // assert(sycl::length(perception_force) <= 1.1);
+              // assert(sycl::length(alignment_force)  <= 1.1);
+              // assert(sycl::length(bbox_force)       <= 2.1);
 
 
               const Coord_t force = 

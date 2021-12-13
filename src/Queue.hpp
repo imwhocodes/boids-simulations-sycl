@@ -29,13 +29,18 @@ class Queue{
             this->cv_push.notify_one();
         }
 
-        void pushOverwite(const TPtr & e){
+        TPtr pushOverwite(const TPtr & e){
+
+            TPtr r;
 
             {
-                std::lock_guard<std::mutex> lck(this->mtx);
-                this->elem = e;
+                std::scoped_lock<std::mutex> lck(this->mtx);
+                r = std::exchange(this->elem, e);
             }
+
             this->cv_push.notify_one();
+
+            return r;
         }
 
 
@@ -55,7 +60,7 @@ class Queue{
         TPtr popTry(){
             TPtr r;
             {
-                std::lock_guard<std::mutex> lck(this->mtx);
+                std::scoped_lock<std::mutex> lck(this->mtx);
                 r = std::move(this->elem);
             }
 

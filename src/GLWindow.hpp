@@ -1,5 +1,6 @@
 #pragma once
 #define GLFW_INCLUDE_GLCOREARB
+#include <array>
 #include <GLFW/glfw3.h>
 #include <GL/gl.h>
 #include <iostream>
@@ -29,6 +30,8 @@ void  printErrorCallback(const int err, const char * desc){
 
 
 using Color_t = sycl::float3;
+using VCoord_t = sycl::float3;
+
 
 Color_t hsv2rgb(const Color_t & hsv ){
 
@@ -67,10 +70,14 @@ Color_t hsv2rgb(const Color_t & hsv ){
 
         default:
             assert(false);
-
     }
          
 }
+
+using VertexArray_t = std::array<VCoord_t, 20>;
+
+VertexArray_t SPHERE_BASE_VERTEX;
+
 
 
 
@@ -81,6 +88,23 @@ GLFWwindow * CreateOpenWindow(const unsigned int w, const unsigned int h){
 
     // glEnable              ( GL_DEBUG_OUTPUT );
     // glDebugMessageCallback( MessageCallback, 0 );
+
+
+    SPHERE_BASE_VERTEX[0] = VCoord_t{0, 0 , 0};
+
+    constexpr size_t vertex_count = SPHERE_BASE_VERTEX.size();
+
+		for(size_t i = 1; i < vertex_count; i++) { 
+
+      const float_t alpha = i * M_PI * 2 / vertex_count;
+
+      SPHERE_BASE_VERTEX[i] = VCoord_t{
+                                        (std::cos(alpha)),
+                                        (std::sin(alpha)), 
+                                        0
+                                      };
+
+		}
 
     GLFWwindow * window = nullptr;
 
@@ -97,7 +121,7 @@ GLFWwindow * CreateOpenWindow(const unsigned int w, const unsigned int h){
         // #endif
 
         /* Create a windowed mode window and its OpenGL context */
-        window = glfwCreateWindow( w, h, "Test", NULL, NULL );
+        window = glfwCreateWindow( w, h, "Test", glfwGetPrimaryMonitor(), NULL );
 
         glfwMakeContextCurrent(window);
 
@@ -135,28 +159,15 @@ GLFWwindow * CreateOpenWindow(const unsigned int w, const unsigned int h){
 
 
 
-void DrawFilledCircle(GLfloat x, GLfloat y, GLfloat z, GLfloat radius){
 
-	constexpr size_t triangleAmount = 20; //# of triangles used to draw circle
-	
-	// GLfloat twicePi = 2.0f * M_PI;
-	
-	glBegin(GL_TRIANGLE_FAN);
 
-		glVertex3f(x, y, z); // center of circle
 
-		for(size_t i = 0; i <= triangleAmount; i++) { 
+void DrawFilledCircle(const VCoord_t & center, GLfloat radius){
 
-      const GLfloat alpha = i * M_PI * 2 / triangleAmount;
-
-			glVertex3f(
-		              x + (radius * std::cos(alpha)), 
-			            y + (radius * std::sin(alpha)),
-                  z
-			); 
-		}
-
-	glEnd();
+  glBegin (GL_POINTS);
+  glVertex3f (center.x(), center.y(), center.z());
+  glEnd ();
+  
 }
 
 void DrawCube(const sycl::float3 & min, const sycl::float3 & max){

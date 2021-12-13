@@ -13,10 +13,63 @@ namespace sycl =  cl::sycl;
 using Clock_t = std::chrono::high_resolution_clock;
 
 
+float_t movement(const float_t period, const size_t counter){
 
-constexpr size_t BOIDS_NUM = 1'000;//45'000;//20'000;//3000000;
+  const float_t alpha = counter / period;
+
+  return (std::cos(alpha * M_PI) + 1.0) / 2.0;
+}
+
+
+template<typename T>
+T movementLerp(const T & min, const T & max, const float_t period, const size_t counter){
+
+  return sycl::mix(min, max, movement(period, counter));
+}
+
+
+
+SimulationParams::Ptr generateParam(const size_t counter){
+
+  //FROM LIVE PARAM
+  static SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
+    SimulationParams::Coord_t{SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{7}}}, //SIM Size
+    SimulationParams::Coord_t{0.20, 0.35, 0.55},    //Radiuses
+    SimulationParams::Coord_t{1, 1, 1},             //Weights
+    SimulationParams::Coord_t{INFINITY, 120, 180},  //Angles
+    0.05,
+    0.0075,
+    0.15
+  );
+
+  return sim_params_ptr;
+
+  using CT = SimulationParams::Coord_t;
+  using ET = CT::element_type;
+
+  return std::make_shared<SimulationParams>(
+            CT{ ET( movementLerp(3.0, 7.0, 34'000, counter) ) }, //SIM Size
+
+            movementLerp( CT{ 0.20, 0.35, 0.55 }, CT{ 0.35, 0.65, 0.90 }, 7'553, counter),  //Radiuses
+
+            CT{ 1, 1, 1},             //Weights
+
+            movementLerp( CT{ INFINITY, 120, 180}, CT{ INFINITY, 180, 90}, 12'221, counter),  //Angles
+
+            movementLerp(0.05, 0.15, 4'556, counter),
+
+            0.0075,
+            0.15
+          );
+}
+
+
+
+
+constexpr size_t BOIDS_NUM = 10'000;//45'000;//20'000;//3000000;
 
 constexpr std::chrono::nanoseconds FPS_PERIOD_TARGET = std::chrono::nanoseconds(int(1.0E9 / 60.0)) ;
+
 
 
 Queue<SimSample> sample_queue;
@@ -31,17 +84,23 @@ void nextGen(){
   std::cout << "Running on " << gpu_queue.get_device().get_info<sycl::info::device::name>() << "\n";
 
 
-  SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
-    SimulationParams::Coord_t{1, 1, 1},
-    SimulationParams::Coord_t{1, 1, 1},
-    0.025,
-    0.005,
-    0.15
-  );
+  auto last_frame_ticks_real = Clock_t::now();
 
 
-  sim_params_ptr->SetSimulationSize(SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{5}});
+  //FROM LIVE PARAM
+  // SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
+  //   SimulationParams::Coord_t{SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{7}}}, //SIM Size
+  //   SimulationParams::Coord_t{0.20, 0.35, 0.55},    //Radiuses
+  //   SimulationParams::Coord_t{1, 1, 1},             //Weights
+  //   SimulationParams::Coord_t{INFINITY, 120, 180},  //Angles
+  //   0.05,
+  //   0.0075,
+  //   0.15
+  // );
 
+  size_t counter = 0;
+
+  SimulationParams::Ptr sim_params_ptr = generateParam(counter);
 
   BoidBase::VectorPrt_t last_simulation_boids  = std::make_shared<BoidBase::Vector_t>( BOIDS_NUM );
 
@@ -50,7 +109,6 @@ void nextGen(){
   } 
 
 
-  auto last_frame_ticks_real = Clock_t::now();
 
   while (!glfwWindowShouldClose(GL_window)){
 
@@ -65,7 +123,10 @@ void nextGen(){
 
     sample_queue.pushWait(std::make_shared<SimSample>(boids_out, sim_params_ptr));
 
+
     last_simulation_boids = boids_out;
+    sim_params_ptr = generateParam(counter);
+    counter++;
 
     const auto now = Clock_t::now();
 
@@ -99,9 +160,11 @@ void showBoids(){
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
-    for(const BoidBase & b : *(s->boids)){
-      b.drawSelf(*(s->params));
-    }
+    BoidBase::FastDraw(s->boids, *(s->params), 1);
+
+    // for(const BoidBase & b : *(s->boids)){
+    //   b.drawSelf(*(s->params));
+    // }
 
     glRotatef(0.13, 1, 0, 0);
     glRotatef(0.17, 0, 1, 0);
@@ -162,7 +225,7 @@ int main(int argc, char *argv[]){
 
 
   GL_window = CreateOpenWindow(
-                                1080,
+                                1920,//1080,
                                 1080
                             );
 
