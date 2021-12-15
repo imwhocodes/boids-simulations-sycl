@@ -13,6 +13,9 @@ namespace sycl =  cl::sycl;
 using Clock_t = std::chrono::high_resolution_clock;
 
 
+
+
+
 float_t movement(const float_t period, const size_t counter){
 
   const float_t alpha = counter / period;
@@ -73,8 +76,42 @@ constexpr std::chrono::nanoseconds FPS_PERIOD_TARGET = std::chrono::nanoseconds(
 
 
 Queue<SimSample> sample_queue;
+Queue<SimulationParams> param_queue;
+
 GLFWwindow * GL_window;
 
+
+void readParams(){
+
+  using CT = SimulationParams::Coord_t;
+  using ET = CT::element_type;
+
+  while(true){
+    std::string value;
+
+    std::getline(std::cin, value);
+
+    const float_t mult = sycl::min(std::stof(value) / 700.0, 1.0);
+
+    std::cout << "Readed:\t" << value << "\t:\t" << mult << std::endl;
+
+      //FROM LIVE PARAM
+    SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
+      SimulationParams::Coord_t{SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{7}}}, //SIM Size
+      sycl::mix(CT{0.20, 0.35, 0.55},  CT{1, 0.50, 1.2}, mult),//Radiuses
+      // SimulationParams::Coord_t{0.20, 0.35, 0.55},    //Radiuses
+      CT{1.0, 1.0, 1.0},// sycl::mix(CT{1.0, 1.0, 1.0}, CT{0.15, 1.5, 0.6}, mult), //SimulationParams::Coord_t{1, 1, 1},             //Weights
+      SimulationParams::Coord_t{INFINITY, 120, 180},  //Angles
+      0.05,
+      0.0075,
+      0.15
+    );
+
+    param_queue.pushOverwite(sim_params_ptr);
+
+  }
+
+}
 
 void nextGen(){
 
@@ -114,6 +151,14 @@ void nextGen(){
 
     const auto start_computing = Clock_t::now();
 
+    SimulationParams::Ptr sim_params_ptr_new = param_queue.popTry();
+
+
+    if(sim_params_ptr_new){
+      sim_params_ptr = sim_params_ptr_new;
+      // std::cout << "Using new parameter" << std::endl;
+    }
+
     BoidBase::VectorPrt_t boids_out = BoidBase::ComputeNextGen(last_simulation_boids, sim_params_ptr, gpu_queue);
 
     const auto end_computing = Clock_t::now();
@@ -134,12 +179,12 @@ void nextGen(){
 
     last_frame_ticks_real = now;
 
-    std::cout <<  "Compu max/real fps:\t" << 
-                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
-                  "  /  " <<
-                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() << 
-                  '\n' <<
-    std::endl;
+    // std::cout <<  "Compu max/real fps:\t" << 
+    //                                     1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
+    //               "  /  " <<
+    //                                     1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() << 
+    //               '\n' <<
+    // std::endl;
 
   }
 
@@ -152,6 +197,11 @@ void showBoids(){
   auto next_frame_ticks_virtual = last_frame_ticks_real;
 
 
+  SimulationParams::SetupGL();
+
+  size_t cnt = 0;
+
+
   while(!glfwWindowShouldClose(GL_window)){
 
     const auto s = sample_queue.popWait();
@@ -160,17 +210,39 @@ void showBoids(){
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
-    BoidBase::FastDraw(s->boids, *(s->params), 1);
+
+    glViewport(0, 0, MONITOR_W*0.5, MONITOR_H*0.5); //LB
+    s->params->setupPush(cnt);
+    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    s->params->setupPop();
+
+
+    glViewport(MONITOR_W*0.5, 0, MONITOR_W*0.5, MONITOR_H*0.5); //RB
+    s->params->setupPush(cnt * -1.1);
+    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    s->params->setupPop();
+
+    glViewport(0, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //LT
+    s->params->setupPush(cnt * +1.25);
+    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    s->params->setupPop();
+
+
+    glViewport(MONITOR_W*0.5, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //RT
+    s->params->setupPush(cnt * -1.33);
+    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    s->params->setupPop();
+
+
 
     // for(const BoidBase & b : *(s->boids)){
     //   b.drawSelf(*(s->params));
     // }
 
-    glRotatef(0.13, 1, 0, 0);
-    glRotatef(0.17, 0, 1, 0);
-    glRotatef(0.09 , 0, 0, 1);
+    // glRotatef(0.13, 1, 0, 0);
+    // glRotatef(0.17, 0, 1, 0);
+    // glRotatef(0.09 , 0, 0, 1);
 
-    s->params->DrawSimBBox();
 
     const auto draw_end_ticks = Clock_t::now();
 
@@ -207,13 +279,15 @@ void showBoids(){
 
     last_frame_ticks_real = now;
 
-    std::cout <<
-                "Draws max/real fps:\t" << 
-                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
-                "   /  " <<                              
-                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
-                '\n' <<
-    std::endl;
+    // std::cout <<
+    //             "Draws max/real fps:\t" << 
+    //                                           1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
+    //             "   /  " <<                              
+    //                                           1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
+    //             '\n' <<
+    // std::endl;
+
+    cnt++;
 
   }
 
@@ -229,7 +303,10 @@ int main(int argc, char *argv[]){
                                 1080
                             );
 
-  std::thread worker(nextGen);
+  std::thread gen_computer(nextGen);
+
+  std::thread read_param(readParams);
+
 
   showBoids();
  

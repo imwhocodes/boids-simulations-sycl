@@ -9,6 +9,13 @@
 namespace sycl =  cl::sycl;
 
 
+constexpr size_t MONITOR_W = 1600;
+constexpr size_t MONITOR_H = 1200;
+
+constexpr float_t CAMERA_FOV = 50;
+constexpr float_t MONITOR_ASPECT_RATIO = float_t{MONITOR_W} / float_t{MONITOR_H};
+constexpr float_t CAMERA_TRANSLATE = -3.5;
+
 void  printErrorCallback(const int err, const char * desc){
     std::cerr << "Error: " << err << '\t' << desc << std::endl;
     std::exit(-1);

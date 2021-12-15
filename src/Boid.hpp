@@ -5,8 +5,7 @@
 #include "GLWindow.hpp"
 
 
-constexpr float_t CAMERA_FOV = 65;
-constexpr float_t MONITOR_ASPECT_RATIO = 16.0/9.0;
+
 
 
 
@@ -22,8 +21,25 @@ float_t randFloat(const float_t min, const float_t max) {
     return min + randFloat(max - min);
 }
 
+namespace cl::sycl {
+  template<typename E, size_t N>
+  E reduceVectWise(const sycl::vec<E, N> & v, std::function<E( const E &, const E &)> & f ){
+
+    E res = v[0];
+
+    for(size_t i = 1; i < N; i++){
+      res = f(res, v[i]);
+    }
+
+    return res;
+
+  } 
+}
+
+
 using GCoord_t = sycl::float3;
 
+class BoidBase;
 
 class SimulationParams {
 
@@ -59,7 +75,6 @@ class SimulationParams {
       _acceleration{acceleration},
       _bbox_repel_radius{bbox_repel_radius}
       {}
-
 
       static Coord_t DegToNormAbsAngle(const Coord_t & angles_deg){
         return angles_deg / (360.0 * 2.0);
@@ -134,16 +149,13 @@ class SimulationParams {
         return this->_max_radiuses[2];
       }
 
+      static void SetupGL(){
 
-      void DrawSimBBox() const {
-        constexpr float_t z_near = 1;
+        constexpr float_t z_near = 0.1;
         constexpr float_t z_far = 100;
 
-
-        glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-
-        const Coord_t min = -this->_half_bbox_size;
+        glMatrixMode(GL_PROJECTION);
 
         // const Coord_t max =  this->_half_bbox_size;
 
@@ -158,11 +170,72 @@ class SimulationParams {
 
         glFrustum( -fW, fW, -fH, fH, z_near, z_far );
 
-        glTranslatef(0, 0, min.z() * 3);
+        glTranslatef(0, 0, CAMERA_TRANSLATE );
         
         glMatrixMode(GL_MODELVIEW);
-        DrawCube(-this->_half_bbox_size, this->_half_bbox_size);
       }
+
+      void setupPush(const float_t a) const {
+        glPushMatrix();
+
+        glRotatef(0.13 * a, 1, 0, 0);
+        glRotatef(0.17 * a, 0, 1, 0);
+        glRotatef(0.09 * a, 0, 0, 1);
+
+        DrawCube(Coord_t{Coord_t::element_type{-1}}, Coord_t{Coord_t::element_type{1}});
+
+        // const float_t max_dim = sycl::reduceVectWise(this->_half_bbox_size, sycl::max<float_t>);
+
+        float_t max_dim = this->_half_bbox_size[0];
+
+        for(size_t i = 0; i < 3; i++){
+          max_dim = std::max(max_dim, this->_half_bbox_size[i]);
+        }
+
+        const float_t scale = 1.0 / ( max_dim ); 
+
+        glScalef(scale, scale, scale);
+
+      }
+
+      void setupPop() const {
+
+        glPopMatrix();
+
+      }
+
+
+
+
+
+      // void DrawSimBBox() const {
+      //   constexpr float_t z_near = 1;
+      //   constexpr float_t z_far = 100;
+
+
+      //   glMatrixMode(GL_PROJECTION);
+      //   glLoadIdentity();
+
+      //   const Coord_t min = -this->_half_bbox_size;
+
+      //   // const Coord_t max =  this->_half_bbox_size;
+
+      //   // glFrustum(min.x(), max.x(), min.y(), max.y(), max.z(), max.z() * 3);
+
+      //   // glPerspective(90, 1, 1, 100);
+
+      //   // glFrustum(1.0, -1.0, -1.0, 1.0, 0.1, 1);
+
+      //   const float_t fH = std::tan( CAMERA_FOV / 360.0 * M_PI ) * z_near;
+      //   const float_t fW = fH * MONITOR_ASPECT_RATIO;
+
+      //   glFrustum( -fW, fW, -fH, fH, z_near, z_far );
+
+      //   glTranslatef(0, 0, min.z() * 3);
+        
+      //   glMatrixMode(GL_MODELVIEW);
+      //   // DrawCube(-this->_half_bbox_size, this->_half_bbox_size);
+      // }
 };
 
 
@@ -259,12 +332,12 @@ class BoidBase {
       );
     }
 
-    static void FastDraw(const VectorPrt_t & boids_in, const SimulationParams & param, const float_t radius){
+    static void FastDraw(const Vector_t & boids_in, const SimulationParams & param, const float_t radius){
       
       glPointSize(radius);
       glBegin (GL_POINTS);
 
-      for(const BoidBase & b : *boids_in){
+      for(const BoidBase & b : boids_in){
 
         const Color_t rgb = b.getForceColor(param);
         glColor3f(rgb.x(), rgb.y(), rgb.z());
