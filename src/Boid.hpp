@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <vector>
+#include <iomanip>
 #include <CL/sycl.hpp>
 #include "GLWindow.hpp"
 
@@ -36,8 +37,14 @@ namespace cl::sycl {
   } 
 }
 
-
 using GCoord_t = sycl::float3;
+
+
+std::ostream & operator << ( std::ostream & s, const sycl::float3 & c){
+  s << c.x() << "\t|\t" << c.y() << "\t|\t" << c.z();
+  return s;
+}
+
 
 class BoidBase;
 
@@ -75,6 +82,20 @@ class SimulationParams {
       _acceleration{acceleration},
       _bbox_repel_radius{bbox_repel_radius}
       {}
+
+
+      friend std::ostream & operator << ( std::ostream & s, const SimulationParams & p){
+        s << std::fixed << std::setprecision(6) <<
+          "BBox:\t"     <<  p._half_bbox_size * 2 << '\n' <<
+          "Radius:\t"   <<  p._max_radiuses   << '\n' <<
+          "Angle:\t\t"  <<  p._max_angles     << '\n' <<
+          "Weight:\t"   <<  p._weights        << '\n' <<
+          "Speed:\t"    <<  p._max_speed      << '\n' <<
+          "Accel:\t"    <<  p._acceleration   << '\n'
+        ;
+
+        return s;
+      }
 
       static Coord_t DegToNormAbsAngle(const Coord_t & angles_deg){
         return angles_deg / (360.0 * 2.0);
@@ -203,7 +224,6 @@ class SimulationParams {
         glPopMatrix();
 
       }
-
 
 
 
@@ -525,7 +545,7 @@ class BoidBase {
               }
 
 
-              assert((separation_cnt - 1) < boid_nums_gpu);
+              // assert((separation_cnt - 1) < boid_nums_gpu);
               // assert((perception_cnt - 1) < boid_nums_gpu);
               // assert((alignment_cnt  - 1) < boid_nums_gpu);
 

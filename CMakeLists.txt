@@ -16,7 +16,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # set(CMAKE_CXX_FLAGS_DEBUG "-g")
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 set( HIPSYCL_TARGETS  "cuda:sm_72" )
-# set( HIPSYCL_TARGETS  "omp" )
+
+# if (CMAKE_BUILD_TYPE EQUAL "DEBUG")
+    # set( HIPSYCL_TARGETS  "omp" )
+# endif (CMAKE_BUILD_TYPE EQUAL "DEBUG")
+
 # set( HIPSYCL_DRYRUN  "yes" )
 # set( HIPSYCL_EXPLICIT_MULTIPASS "yes" )
 # set( OMP_LINK_LINE "-Xclang -fopenmp" )

@@ -8,6 +8,7 @@ template <typename T>
 class Queue{
 
     protected:
+
         using TPtr = std::shared_ptr<T>;
 
         TPtr elem;
@@ -66,6 +67,11 @@ class Queue{
 
             this->cv_pop.notify_one();
             return r;
+        }
+
+        TPtr popGet(){
+            std::scoped_lock<std::mutex> lck(this->mtx);
+            return this->elem;
         }
 
 };

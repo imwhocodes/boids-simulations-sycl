@@ -9,8 +9,8 @@
 namespace sycl =  cl::sycl;
 
 
-constexpr size_t MONITOR_W = 1600;
-constexpr size_t MONITOR_H = 1200;
+constexpr size_t MONITOR_W = 1920; //1600;
+constexpr size_t MONITOR_H = 1080; //1200;
 
 constexpr float_t CAMERA_FOV = 50;
 constexpr float_t MONITOR_ASPECT_RATIO = float_t{MONITOR_W} / float_t{MONITOR_H};
