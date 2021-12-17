@@ -56,6 +56,8 @@ find_package(hipSYCL REQUIRED)
 
 find_package(Threads REQUIRED)
 
+include_directories("lib/json/single_include/nlohmann")
+
 # add the executable
 add_executable(boids "src/main.cpp")
 

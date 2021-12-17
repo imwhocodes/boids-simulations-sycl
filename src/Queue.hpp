@@ -75,19 +75,3 @@ class Queue{
         }
 
 };
-
-class SimSample {
-    public:
-
-        using TPtr = std::shared_ptr<SimSample>;
-
-        const BoidBase::VectorPrt_t boids;
-        const SimulationParams::Ptr params;
-
-        SimSample(const BoidBase::VectorPrt_t & boids, const SimulationParams::Ptr & params)
-            :
-        boids{boids},
-        params{params}
-        {}
-
-};

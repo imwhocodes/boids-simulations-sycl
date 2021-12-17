@@ -7,3 +7,6 @@
 [submodule "lib/hipSYCL"]
 	path = lib/hipSYCL
 	url = https://github.com/illuhad/hipSYCL.git
+[submodule "lib/json"]
+	path = lib/json
+	url = https://github.com/nlohmann/json.git

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <thread>
+#include "json.hpp"
 #include "GLWindow.hpp"
 #include "Boid.hpp"
 #include "Queue.hpp"
@@ -13,10 +14,15 @@ namespace sycl =  cl::sycl;
 using Clock_t = std::chrono::high_resolution_clock;
 
 
-constexpr size_t BOIDS_NUM = 7'000;//45'000;//20'000;//3000000;
+constexpr size_t BOIDS_NUM = 6'500;//45'000;//20'000;//3000000;
+constexpr size_t MULTIPLE_SIM = 4;
+
 
 constexpr std::chrono::nanoseconds FPS_PERIOD_TARGET = std::chrono::nanoseconds(int(1.0E9 / 60.0)) ;
 
+
+using CT = SimulationParams::Coord_t;
+using ET = CT::element_type;
 
 float_t movement(const float_t period, const size_t counter){
 
@@ -36,8 +42,7 @@ T movementLerp(const T & min, const T & max, const float_t period, const size_t 
 
 SimulationParams::Ptr generateParam(const size_t counter){
 
-  using CT = SimulationParams::Coord_t;
-  using ET = CT::element_type;
+
 
 
   //FROM LIVE PARAM
@@ -76,19 +81,19 @@ SimulationParams::Ptr generateParam(const size_t counter){
 
 
 
+using MultiSimSamples_t = std::array<SimSample::Ptr,        MULTIPLE_SIM>;
+using MultiParam_t =      std::array<SimulationParams::Ptr, MULTIPLE_SIM>;
 
 
-
-Queue<SimSample> sample_queue;
-Queue<SimulationParams> param_queue;
+Queue<MultiSimSamples_t>  sample_queue;
+Queue<MultiParam_t>       param_queue;
 
 GLFWwindow * GL_window;
 
 
 void readParams(){
 
-  using CT = SimulationParams::Coord_t;
-  using ET = CT::element_type;
+  using json = nlohmann::json;
 
   while(true){
     std::string input;
@@ -97,37 +102,60 @@ void readParams(){
 
     std::istringstream iss(input);
 
+    const json j = json::parse(input);
 
-    std::array<float_t, 2> input_values;
+    std::shared_ptr<MultiParam_t> multi_sim_params_ptr = std::make_shared<MultiParam_t>();
 
+    for(size_t i = 0; i < multi_sim_params_ptr->size(); i++){
 
-    for( float_t & f : input_values){
-      std::string value;
+      const json  p = j[std::to_string(i)];
 
-      std::getline(iss, value, ';');
+      const json size       = p["size"];
+      const json radiuses   = p["radiuses"];
+      const json weights    = p["weights"];
+      const json angles     = p["angles"];
+      const json max_speed  = p["max_speed"];
+      const json accel      = p["accel"];
 
-      f = std::stof(value);
-
+      (*multi_sim_params_ptr)[i] = std::make_shared<SimulationParams>(
+                                CT{ ET{size[0]},      ET{size[1]},      ET{size[2]}     },  //SIM Size
+                                CT{ ET{radiuses[0]},  ET{radiuses[1]},  ET{radiuses[2]} },  //Radiuses
+                                CT{ ET{weights[0]},   ET{weights[1]},   ET{weights[2]}  },  //Weights
+                                CT{ ET{angles[0]},    ET{angles[1]},    ET{angles[2]}   },  //Angles
+                                max_speed,  //0.20,
+                                accel,      //0.025,
+                                0.15
+                            );
     }
 
+    param_queue.pushOverwite(multi_sim_params_ptr);
 
-    const float_t mult = input_values[0];
+    // for( float_t & f : input_values){
+    //   std::string value;
 
-    std::cout << "Readed:\t" << mult << "\t:\t" << mult << std::endl;
+    //   std::getline(iss, value, ';');
 
-      //FROM LIVE PARAM
-    SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
-      SimulationParams::Coord_t{SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{7}}}, //SIM Size
-      sycl::mix(CT{0.20, 0.35, 0.55},  CT{1, 0.50, 1.2}, mult),//Radiuses
-      // SimulationParams::Coord_t{0.20, 0.35, 0.55},    //Radiuses
-      CT{1.0, 1.0, 1.0},// sycl::mix(CT{1.0, 1.0, 1.0}, CT{0.15, 1.5, 0.6}, mult), //SimulationParams::Coord_t{1, 1, 1},             //Weights
-      SimulationParams::Coord_t{INFINITY, 120, 180},  //Angles
-      0.05,
-      0.0075,
-      0.15
-    );
+    //   f = std::stof(value);
 
-    param_queue.pushOverwite(sim_params_ptr);
+    // }
+
+
+    // const float_t mult = input_values[0];
+
+    // std::cout << "Readed:\t" << mult << "\t:\t" << mult << std::endl;
+
+    //   //FROM LIVE PARAM
+    // SimulationParams::Ptr sim_params_ptr = std::make_shared<SimulationParams>(
+    //   SimulationParams::Coord_t{SimulationParams::Coord_t{SimulationParams::Coord_t::element_type{7}}}, //SIM Size
+    //   sycl::mix(CT{0.20, 0.35, 0.55},  CT{1, 0.50, 1.2}, mult),//Radiuses
+    //   // SimulationParams::Coord_t{0.20, 0.35, 0.55},    //Radiuses
+    //   CT{1.0, 1.0, 1.0},// sycl::mix(CT{1.0, 1.0, 1.0}, CT{0.15, 1.5, 0.6}, mult), //SimulationParams::Coord_t{1, 1, 1},             //Weights
+    //   SimulationParams::Coord_t{INFINITY, 120, 180},  //Angles
+    //   0.05,
+    //   0.0075,
+    //   0.15
+    // );
+
 
   }
 
@@ -138,7 +166,9 @@ void nextGen(){
   // sycl::gpu_selector device_selector;
   sycl::default_selector device_selector;
   sycl::queue gpu_queue(device_selector);
-  std::cout << "Running on " << gpu_queue.get_device().get_info<sycl::info::device::name>() << "\n";
+
+  // sycl::queue gpu_queue(device_selector);
+  // std::cout << "Running on " << gpu_queue.get_device().get_info<sycl::info::device::name>() << "\n";
 
 
   auto last_frame_ticks_real = Clock_t::now();
@@ -155,20 +185,25 @@ void nextGen(){
   //   0.15
   // );
 
+
   size_t counter = 0;
-  
-  BoidBase::VectorPrt_t last_simulation_boids  = std::make_shared<BoidBase::Vector_t>( BOIDS_NUM );
+
+  const SimulationParams::Ptr sim_params_ptr_init = generateParam(counter);
+
+  std::shared_ptr<MultiSimSamples_t> last_simulations_boids = std::make_shared<MultiSimSamples_t>();
+
+  // for(SimSample::Ptr & s : *last_simulations_boids){
+
+  //   s = 
+
+  // }
 
 
-  {
-    const SimulationParams::Ptr sim_params_ptr = generateParam(counter);
+   (*last_simulations_boids)[0] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(1000));
+   (*last_simulations_boids)[1] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(50000));
+   (*last_simulations_boids)[2] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(10000));
+   (*last_simulations_boids)[3] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(475090));
 
-    for(BoidBase & b : *last_simulation_boids){
-      b = BoidBase::Random(*sim_params_ptr);
-    }
-
-    param_queue.pushOverwite(sim_params_ptr);
-  }
 
 
 
@@ -177,19 +212,37 @@ void nextGen(){
 
     const auto start_computing = Clock_t::now();
 
-    SimulationParams::Ptr sim_params_ptr_ext = generateParam(counter); //param_queue.popGet();
+    // SimulationParams::Ptr sim_params_ptr_ext = generateParam(counter); //param_queue.popGet();
 
-    BoidBase::VectorPrt_t boids_out = BoidBase::ComputeNextGen(last_simulation_boids, sim_params_ptr_ext, gpu_queue);
+    std::shared_ptr<MultiSimSamples_t> last_simulations_boids_updated = std::make_shared<MultiSimSamples_t>();
+
+    for(size_t i = 0; i < last_simulations_boids->size(); i++){
+      (*last_simulations_boids_updated)[i] = (*last_simulations_boids)[i]->computeGetNextGen(gpu_queue); //->computeGetNextGenNewParam(sim_params_ptr_ext, gpu_queue);
+    }
+
+    gpu_queue.wait();
+
+    // gpu_queue.submit([&] (sycl::handler& cgh) {
+
+    //   cgh.parallel_for<class test>( sycl::range<1>(MULTIPLE_SIM), [&](sycl::id<1> ic){
+    //     const size_t i = ic[0];
+    //     last_simulations_boids_updated[i] = last_simulations_boids[i]->computeGetNextGenNewParam(sim_params_ptr_ext, gpu_queue);
+    //   });
+
+    // });
+
+    // BoidBase::VectorPrt_t boids_out = BoidBase::ComputeNextGen(last_simulation_boids, sim_params_ptr_ext, gpu_queue);
 
     const auto end_computing = Clock_t::now();
 
     const auto computing_delta_ticks = end_computing - start_computing;
 
 
-    sample_queue.pushWait(std::make_shared<SimSample>(boids_out, sim_params_ptr_ext));
+    sample_queue.pushWait(last_simulations_boids_updated);
 
 
-    last_simulation_boids = boids_out;
+    last_simulations_boids = last_simulations_boids_updated;
+
     counter++;
 
     const auto now = Clock_t::now();
@@ -199,16 +252,19 @@ void nextGen(){
     last_frame_ticks_real = now;
 
 
-    std::cout <<  "Compu max/real fps:\t" << 
+    std::cout <<  "Compu max/real fps:\t" <<
                                         1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
                   "  /  " <<
-                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() << 
+                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
                   '\n' <<
     std::endl;
 
   }
 
 }
+
+
+
 
 void showBoids(){
 
@@ -230,28 +286,33 @@ void showBoids(){
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
+    const size_t k = cnt / 1000;
 
     glViewport(0, 0, MONITOR_W*0.5, MONITOR_H*0.5); //LB
-    s->params->setupPush(cnt);
-    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
-    s->params->setupPop();
+    (*s)[(0 + k) % MULTIPLE_SIM]->fastDraw();
+    // s->params->setupPush(cnt);
+    // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    // s->params->setupPop();
 
 
     glViewport(MONITOR_W*0.5, 0, MONITOR_W*0.5, MONITOR_H*0.5); //RB
-    s->params->setupPush(cnt * -1.1);
-    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
-    s->params->setupPop();
+    (*s)[(1 + k) % MULTIPLE_SIM]->fastDraw();
+    // s->params->setupPush(cnt * -1.1);
+    // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    // s->params->setupPop();
 
     glViewport(0, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //LT
-    s->params->setupPush(cnt * +1.25);
-    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
-    s->params->setupPop();
+    (*s)[(2 + k) % MULTIPLE_SIM]->fastDraw();
+    // s->params->setupPush(cnt * +1.25);
+    // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    // s->params->setupPop();
 
 
     glViewport(MONITOR_W*0.5, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //RT
-    s->params->setupPush(cnt * -1.33);
-    BoidBase::FastDraw(*(s->boids), *(s->params), 1);
-    s->params->setupPop();
+    (*s)[(3 + k) % MULTIPLE_SIM]->fastDraw();
+    // s->params->setupPush(cnt * -1.33);
+    // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
+    // s->params->setupPop();
 
 
 
@@ -300,13 +361,13 @@ void showBoids(){
     last_frame_ticks_real = now;
 
     std::cout <<
-                "Draws max/real fps:\t" << 
+                "Draws max/real fps:\t" <<
                                               1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
-                "   /  " <<                              
+                "   /  " <<
                                               1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
                 '\n' <<
-                *(s->params) <<
-                '\n' <<
+                // *(s->params) <<
+                // '\n' <<
     std::endl;
 
     cnt++;
@@ -331,7 +392,7 @@ int main(int argc, char *argv[]){
 
 
   showBoids();
- 
+
   std::cout << "!!!END!!!" << std::endl;
 
 }

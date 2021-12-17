@@ -314,6 +314,16 @@ class BoidBase {
     }
 
 
+  static VectorPrt_t RandomVect(const size_t num, const SimulationParams & param) {
+    VectorPrt_t ret  = std::make_shared<Vector_t>( num );
+
+    for(BoidBase & b : *ret){
+      b = BoidBase::Random(param);
+    }
+
+    return ret;
+  }
+
 
     Coord_t getForceFromBBox(const SimulationParams & param) const {
 
@@ -418,13 +428,13 @@ class BoidBase {
 
       const float_t alpha_dist = sycl::length(dist_vector_alpha);
 
-      assert(alpha_dist <= 1.1 || std::isnan(alpha_dist));
+      // assert(alpha_dist <= 1.1 || std::isnan(alpha_dist));
 
       const float_t inv_force = alpha_dist - 1 ;
 
       const Coord_t force = (dist_vector_alpha * inv_force);
 
-      assert(sycl::length(force) <= 1 || std::isnan(alpha_dist));
+      // assert(sycl::length(force) <= 1 || std::isnan(alpha_dist));
 
       return IfNaNGetZero( force * param.separation_weight());
     }
@@ -593,9 +603,9 @@ class BoidBase {
                                     alignment_force
                                   ;
 
-              assert(!std::isnan(force.x()));
-              assert(!std::isnan(force.y())); 
-              assert(!std::isnan(force.z()));
+              // assert(!std::isnan(force.x()));
+              // assert(!std::isnan(force.y())); 
+              // assert(!std::isnan(force.z()));
 
               boids_out_acc[ic] = cboid.applyForce(force, sim_params_gpu);
 
@@ -612,3 +622,41 @@ class BoidBase {
 };
 
 
+class SimSample {
+    public:
+
+        using Ptr = std::shared_ptr<SimSample>;
+
+        const BoidBase::VectorPrt_t boids;
+        const SimulationParams::Ptr params;
+
+        SimSample(const BoidBase::VectorPrt_t & boids, const SimulationParams::Ptr & params)
+            :
+        boids{boids},
+        params{params}
+        {}
+
+        Ptr computeGetNextGen( sycl::queue & gpu_queue ) const {
+
+          return this->computeGetNextGenNewParam(this->params, gpu_queue);
+
+        }
+
+        Ptr computeGetNextGenNewParam( const SimulationParams::Ptr & params, sycl::queue & gpu_queue ) const {
+
+          return std::make_shared<SimSample>(
+                                              BoidBase::ComputeNextGen(this->boids, params, gpu_queue),
+                                              params
+          );
+
+        }
+
+        void fastDraw() const {
+          this->params->setupPush(0);
+          BoidBase::FastDraw(*(this->boids), *(this->params), 1);
+          this->params->setupPop();
+        }
+
+
+
+};
