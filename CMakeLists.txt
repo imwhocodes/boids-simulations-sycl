@@ -56,6 +56,12 @@ find_package(hipSYCL REQUIRED)
 
 find_package(Threads REQUIRED)
 
+
+# include_directories("/usr/lib/cmake/")
+
+# list(APPEND CMAKE_MODULE_PATH "/usr/lib/cmake/glm/")
+find_package(glm REQUIRED)
+
 include_directories("lib/json/single_include/nlohmann")
 
 # add the executable
@@ -68,6 +74,8 @@ target_link_libraries( boids PUBLIC OpenGL::GL )
 target_link_libraries( boids PUBLIC RtMidi::rtmidi )
 target_link_libraries( boids PUBLIC OpenMP::OpenMP_CXX )
 target_link_libraries( boids PUBLIC hipSYCL::hipSYCL-rt )
+target_link_libraries( boids PUBLIC glm )
+
 add_sycl_to_target( TARGET boids SOURCES "src/Boid.hpp")
 
 

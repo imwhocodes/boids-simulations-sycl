@@ -4,17 +4,23 @@
 #include <memory>
 #include <vector>
 #include <thread>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include "json.hpp"
 #include "GLWindow.hpp"
 #include "Boid.hpp"
 #include "Queue.hpp"
+
 
 namespace sycl =  cl::sycl;
 
 using Clock_t = std::chrono::high_resolution_clock;
 
 
-constexpr size_t BOIDS_NUM = 6'500;//45'000;//20'000;//3000000;
+constexpr size_t BOIDS_NUM = 6'000;//45'000;//20'000;//3000000;
 constexpr size_t MULTIPLE_SIM = 4;
 
 
@@ -95,40 +101,74 @@ void readParams(){
 
   using json = nlohmann::json;
 
+  constexpr size_t MAX_SIZE = 1500;
+
+
+  int socket_desc;
+  struct sockaddr_in server_addr;
+
+
+  socket_desc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(55555);
+  server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
+
+  bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr));
+
   while(true){
-    std::string input;
 
-    std::getline(std::cin, input);
+    // std::string input;
 
-    std::istringstream iss(input);
+    // std::getline(std::cin, input);
 
-    const json j = json::parse(input);
+    // std::istringstream iss(input);
 
-    std::shared_ptr<MultiParam_t> multi_sim_params_ptr = std::make_shared<MultiParam_t>();
+    std::array<char, MAX_SIZE> recive_buffer;
 
-    for(size_t i = 0; i < multi_sim_params_ptr->size(); i++){
+    const size_t recived_len = recv(socket_desc, recive_buffer.data(), MAX_SIZE, 0);
 
-      const json  p = j[std::to_string(i)];
+    std::string_view input{recive_buffer.data(), recived_len};
 
-      const json size       = p["size"];
-      const json radiuses   = p["radiuses"];
-      const json weights    = p["weights"];
-      const json angles     = p["angles"];
-      const json max_speed  = p["max_speed"];
-      const json accel      = p["accel"];
+    // std::cout << "Recived:\t" << input << std::endl;
 
-      (*multi_sim_params_ptr)[i] = std::make_shared<SimulationParams>(
-                                CT{ ET{size[0]},      ET{size[1]},      ET{size[2]}     },  //SIM Size
-                                CT{ ET{radiuses[0]},  ET{radiuses[1]},  ET{radiuses[2]} },  //Radiuses
-                                CT{ ET{weights[0]},   ET{weights[1]},   ET{weights[2]}  },  //Weights
-                                CT{ ET{angles[0]},    ET{angles[1]},    ET{angles[2]}   },  //Angles
-                                max_speed,  //0.20,
-                                accel,      //0.025,
-                                0.15
-                            );
+    try{
+
+      const json j = json::parse(input);
+
+      std::shared_ptr<MultiParam_t> multi_sim_params_ptr = std::make_shared<MultiParam_t>();
+
+      for(size_t i = 0; i < multi_sim_params_ptr->size(); i++){
+
+        const json  p = j[std::to_string(i)];
+
+        const json size       = p["size"];
+        const json radiuses   = p["radiuses"];
+        const json weights    = p["weights"];
+        const json angles     = p["angles"];
+        const json max_speed  = p["max_speed"];
+        const json accel      = p["accel"];
+        const json repel      = p["repel"];
+
+
+        (*multi_sim_params_ptr)[i] = std::make_shared<SimulationParams>(
+                                  CT{ ET{size[0]},      ET{size[1]},      ET{size[2]}     },  //SIM Size
+                                  CT{ ET{radiuses[0]},  ET{radiuses[1]},  ET{radiuses[2]} },  //Radiuses
+                                  CT{ ET{weights[0]},   ET{weights[1]},   ET{weights[2]}  },  //Weights
+                                  CT{ ET{angles[0]},    ET{angles[1]},    ET{angles[2]}   },  //Angles
+                                  max_speed,  //0.20,
+                                  accel,      //0.025,
+                                  repel       //0.15
+                              );
+      }
+
+      param_queue.pushOverwite(multi_sim_params_ptr);
+
     }
 
-    param_queue.pushOverwite(multi_sim_params_ptr);
+    catch(const json::exception & e){
+      std::cerr << e.what() << "\t:\t" << input << std::endl;
+    }
 
     // for( float_t & f : input_values){
     //   std::string value;
@@ -192,11 +232,11 @@ void nextGen(){
 
   std::shared_ptr<MultiSimSamples_t> last_simulations_boids = std::make_shared<MultiSimSamples_t>();
 
-  // for(SimSample::Ptr & s : *last_simulations_boids){
+  // // for(SimSample::Ptr & s : *last_simulations_boids){
 
-  //   s = 
+  // //   s = 
 
-  // }
+  // // }
 
 
    (*last_simulations_boids)[0] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(1000));
@@ -205,6 +245,7 @@ void nextGen(){
    (*last_simulations_boids)[3] = std::make_shared<SimSample>(BoidBase::RandomVect(BOIDS_NUM, *sim_params_ptr_init), generateParam(475090));
 
 
+  param_queue.pushOverwite(std::make_shared<MultiParam_t>(MultiParam_t{sim_params_ptr_init, sim_params_ptr_init, sim_params_ptr_init, sim_params_ptr_init}));
 
 
 
@@ -212,12 +253,12 @@ void nextGen(){
 
     const auto start_computing = Clock_t::now();
 
-    // SimulationParams::Ptr sim_params_ptr_ext = generateParam(counter); //param_queue.popGet();
+    const std::shared_ptr<MultiParam_t> sim_params_ptr_ext = param_queue.popGet(); //generateParam(counter); //param_queue.popGet();
 
     std::shared_ptr<MultiSimSamples_t> last_simulations_boids_updated = std::make_shared<MultiSimSamples_t>();
 
-    for(size_t i = 0; i < last_simulations_boids->size(); i++){
-      (*last_simulations_boids_updated)[i] = (*last_simulations_boids)[i]->computeGetNextGen(gpu_queue); //->computeGetNextGenNewParam(sim_params_ptr_ext, gpu_queue);
+    for(size_t i = 0; i < MULTIPLE_SIM; i++){
+      (*last_simulations_boids_updated)[i] = (*last_simulations_boids)[i]->computeGetNextGenNewParam((*sim_params_ptr_ext)[i], gpu_queue); //->computeGetNextGenNewParam(sim_params_ptr_ext, gpu_queue);
     }
 
     gpu_queue.wait();
@@ -252,16 +293,30 @@ void nextGen(){
     last_frame_ticks_real = now;
 
 
-    std::cout <<  "Compu max/real fps:\t" <<
-                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
-                  "  /  " <<
-                                        1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
-                  '\n' <<
-    std::endl;
+    // std::cout <<  "Compu max/real fps:\t" <<
+    //                                     1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(computing_delta_ticks).count() <<
+    //               "  /  " <<
+    //                                     1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
+    //               '\n' <<
+    // std::endl;
 
   }
 
 }
+
+
+glm::mat4 rotateMat(const glm::mat4 & in, const float_t d, const sycl::float3 & p){
+
+  glm::mat4 res = in;
+
+  res = glm::rotate(res, d, glm::vec3(1, 0, 0));
+  res = glm::rotate(res, d, glm::vec3(0, 1, 0));
+  res = glm::rotate(res, d, glm::vec3(0, 0, 1));
+
+  return res;
+}
+
+
 
 
 
@@ -277,6 +332,8 @@ void showBoids(){
 
   size_t cnt = 0;
 
+  std::array<glm::mat4, 4> rotation_matrixes;
+
 
   while(!glfwWindowShouldClose(GL_window)){
 
@@ -286,30 +343,33 @@ void showBoids(){
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear the buffers
 
-    const size_t k = cnt / 1000;
+    const size_t k = cnt / 500;
 
     glViewport(0, 0, MONITOR_W*0.5, MONITOR_H*0.5); //LB
-    (*s)[(0 + k) % MULTIPLE_SIM]->fastDraw();
+    glRotatef(0.13, 1, 0, 0);
+    glRotatef(0.17, 0, 1, 0);
+    glRotatef(0.09, 0, 0, 1);
+    (*s)[(0 + k) % MULTIPLE_SIM]->fastDraw(-k);
     // s->params->setupPush(cnt);
     // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
     // s->params->setupPop();
 
 
     glViewport(MONITOR_W*0.5, 0, MONITOR_W*0.5, MONITOR_H*0.5); //RB
-    (*s)[(1 + k) % MULTIPLE_SIM]->fastDraw();
+    (*s)[(1 + k) % MULTIPLE_SIM]->fastDraw(k);
     // s->params->setupPush(cnt * -1.1);
     // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
     // s->params->setupPop();
 
     glViewport(0, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //LT
-    (*s)[(2 + k) % MULTIPLE_SIM]->fastDraw();
+    (*s)[(2 + k) % MULTIPLE_SIM]->fastDraw(-k*1.5);
     // s->params->setupPush(cnt * +1.25);
     // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
     // s->params->setupPop();
 
 
     glViewport(MONITOR_W*0.5, MONITOR_H*0.5, MONITOR_W*0.5, MONITOR_H*0.5); //RT
-    (*s)[(3 + k) % MULTIPLE_SIM]->fastDraw();
+    (*s)[(3 + k) % MULTIPLE_SIM]->fastDraw(k);
     // s->params->setupPush(cnt * -1.33);
     // BoidBase::FastDraw(*(s->boids), *(s->params), 1);
     // s->params->setupPop();
@@ -360,15 +420,15 @@ void showBoids(){
 
     last_frame_ticks_real = now;
 
-    std::cout <<
-                "Draws max/real fps:\t" <<
-                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
-                "   /  " <<
-                                              1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
-                '\n' <<
-                // *(s->params) <<
-                // '\n' <<
-    std::endl;
+    // std::cout <<
+    //             "Draws max/real fps:\t" <<
+    //                                           1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(draw_delta_ticks).count()  <<
+    //             "   /  " <<
+    //                                           1e+9 / std::chrono::duration_cast<std::chrono::nanoseconds>(frame_delta_ticks).count() <<
+    //             '\n' <<
+    //             // *(s->params) <<
+    //             // '\n' <<
+    // std::endl;
 
     cnt++;
 
@@ -386,10 +446,10 @@ int main(int argc, char *argv[]){
                                 MONITOR_H
                             );
 
+
+  std::thread read_param(readParams);
+
   std::thread gen_computer(nextGen);
-
-  // std::thread read_param(readParams);
-
 
   showBoids();
 

@@ -199,8 +199,8 @@ class SimulationParams {
       void setupPush(const float_t a) const {
         glPushMatrix();
 
-        glRotatef(0.13 * a, 1, 0, 0);
-        glRotatef(0.17 * a, 0, 1, 0);
+        glRotatef(0.04 * a, 1, 0, 0);
+        glRotatef(0.07 * a, 0, 1, 0);
         glRotatef(0.09 * a, 0, 0, 1);
 
         DrawCube(Coord_t{Coord_t::element_type{-1}}, Coord_t{Coord_t::element_type{1}});
@@ -651,8 +651,8 @@ class SimSample {
 
         }
 
-        void fastDraw() const {
-          this->params->setupPush(0);
+        void fastDraw(const float_t r) const {
+          this->params->setupPush(r);
           BoidBase::FastDraw(*(this->boids), *(this->params), 1);
           this->params->setupPop();
         }
